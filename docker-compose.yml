@@ -1,0 +1,192 @@
+# =============================================================================
+# TP Intégration Logicielle — M2 ISIE IBAM
+# Stack complète : PostgreSQL + GLPI + Grafana + Prometheus + cAdvisor
+# Démarrage : docker compose up -d
+# Arrêt complet : docker compose down -v
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # 1. PostgreSQL — Base de données relationnelle pour GLPI
+  #    Utilise des timestamps Unix (entiers), pas des TIMESTAMP natifs.
+  #    Le health check garantit que GLPI n'essaie pas de se connecter avant
+  #    que la base soit réellement prête à accepter des connexions.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15
+    container_name: glpi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Forcer l'encodage UTF-8 pour la compatibilité avec GLPI
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      # Volume nommé pour la persistance des données entre redémarrages
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - glpi_network
+    healthcheck:
+      # pg_isready vérifie que PostgreSQL accepte des connexions sur le bon user/db
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # 2. GLPI — Système de gestion de parc informatique (ITSM)
+  #    Dépend de postgres avec condition service_healthy : GLPI ne démarre
+  #    qu'une fois PostgreSQL opérationnel (évite les erreurs de connexion).
+  #    Premier démarrage : 1-2 min pour l'initialisation de la base.
+  # ---------------------------------------------------------------------------
+  glpi:
+    image: diouxx/glpi
+    container_name: glpi_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # Attendre que le health check de postgres soit "healthy"
+        condition: service_healthy
+    environment:
+      # Paramètres de connexion à la base PostgreSQL
+      MARIADB_HOST: ${GLPI_DB_HOST}
+      MARIADB_DATABASE: ${GLPI_DB_NAME}
+      MARIADB_USER: ${GLPI_DB_USER}
+      MARIADB_PASSWORD: ${GLPI_DB_PASSWORD}
+      # Variables pour l'image diouxx/glpi avec PostgreSQL
+      DB_TYPE: pgsql
+      GLPI_LANG: fr_FR
+      # Version GLPI à déployer (tag stable LTS)
+      VERSION_GLPI: "10.0.16"
+    ports:
+      # Accès GLPI via http://localhost:8080
+      - "8080:80"
+    volumes:
+      # Persistance des fichiers uploadés (documents, pièces jointes tickets…)
+      - glpi_files:/var/www/html/files
+      # Persistance des plugins installés
+      - glpi_plugins:/var/www/html/plugins
+    networks:
+      - glpi_network
+
+  # ---------------------------------------------------------------------------
+  # 3. Grafana — Tableaux de bord et visualisation
+  #    Les datasources et dashboards sont provisionnés automatiquement via
+  #    les fichiers YAML montés dans /etc/grafana/provisioning/.
+  #    Cela évite toute configuration manuelle après le démarrage.
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: glpi_grafana
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - prometheus
+    environment:
+      # Identifiants administrateur (surcharger dans .env en production)
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      # Désactiver la page de login sur les environnements de test
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Permettre l'usage de variables d'env dans les fichiers de provisioning
+      GF_RENDERING_SERVER_URL: ""
+      # Chemin vers les dashboards provisionnés
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/glpi_dashboard.json
+    ports:
+      # Accès Grafana via http://localhost:3000
+      - "3000:3000"
+    volumes:
+      # Persistance interne de Grafana (sessions, alertes, annotations…)
+      - grafana_data:/var/lib/grafana
+      # Provisioning automatique des datasources au démarrage
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      # Provisioning automatique des dashboards au démarrage
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      # Fichiers JSON des dashboards (chemin référencé dans dashboards.yml)
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - glpi_network
+
+  # ---------------------------------------------------------------------------
+  # 4. cAdvisor — Exposition des métriques des conteneurs Docker
+  #    Analyse l'utilisation CPU, mémoire et réseau de chaque conteneur
+  #    en accédant directement aux cgroups et au daemon Docker de l'hôte.
+  #    Pas de volume persistant : les métriques sont en temps réel.
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: glpi_cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      # Accès cAdvisor via http://localhost:8081 — métriques sur /metrics
+      - "8081:8080"
+    volumes:
+      # Accès en lecture seule aux ressources système de l'hôte
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    networks:
+      - glpi_network
+
+  # ---------------------------------------------------------------------------
+  # 5. Prometheus — Collecte et stockage de métriques (TSDB)
+  #    Scrape cAdvisor toutes les 15s et conserve les données selon
+  #    PROMETHEUS_RETENTION (défaut : 15 jours).
+  #    Dépend de cAdvisor pour garantir la disponibilité de la cible.
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: glpi_prometheus
+    restart: unless-stopped
+    depends_on:
+      - cadvisor
+    command:
+      # Pointer vers le fichier de configuration personnalisé
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      # Durée de rétention des métriques (configurable via .env)
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
+      # Chemin de stockage des séries temporelles
+      - "--storage.tsdb.path=/prometheus"
+      # Activer l'API web pour les requêtes PromQL externes (Grafana)
+      - "--web.enable-lifecycle"
+    ports:
+      # Accès Prometheus via http://localhost:9090
+      - "9090:9090"
+    volumes:
+      # Fichier de configuration Prometheus (scrape_configs)
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Volume nommé pour la persistance des séries temporelles
+      - prometheus_data:/prometheus
+    networks:
+      - glpi_network
+
+# =============================================================================
+# Volumes nommés — permettent à "docker compose down -v" de tout nettoyer
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  glpi_files:
+    driver: local
+  glpi_plugins:
+    driver: local
+  grafana_data:
+    driver: local
+  prometheus_data:
+    driver: local
+
+# =============================================================================
+# Réseau Docker dédié — isolation de la stack, communication par nom de service
+# =============================================================================
+networks:
+  glpi_network:
+    driver: bridge
+    name: glpi_network

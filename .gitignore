@@ -1,0 +1,24 @@
+# =============================================================================
+# Fichiers sensibles — ne jamais versionner
+# =============================================================================
+
+# Variables d'environnement avec les vrais secrets
+.env
+
+# Données persistantes Docker (si bind-mount local utilisé)
+data/
+volumes/
+
+# Fichiers temporaires système
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# Fichiers de configuration générés localement
+glpi/config_db.php
+
+# IDE
+.vscode/
+.idea/
+*.swp

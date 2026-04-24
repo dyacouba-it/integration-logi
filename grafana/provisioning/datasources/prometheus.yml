@@ -1,0 +1,20 @@
+# =============================================================================
+# Provisioning automatique de la datasource Prometheus
+# Utilisée pour les panels de monitoring infrastructure (cAdvisor).
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # Hostname 'prometheus' = nom du service dans docker-compose.yml
+    url: http://prometheus:9090
+    # Non définie comme datasource par défaut (PostgreSQL l'est déjà)
+    isDefault: false
+    jsonData:
+      # Doit correspondre à scrape_interval dans prometheus.yml
+      timeInterval: 15s
+      # Activer l'explorateur de métriques dans Grafana
+      httpMethod: POST
+    editable: false

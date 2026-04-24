@@ -1,0 +1,30 @@
+# =============================================================================
+# Provisioning automatique de la datasource PostgreSQL (GLPI)
+# Ce fichier est lu au démarrage de Grafana.
+# Les variables ${...} sont résolues depuis les variables d'environnement
+# passées au conteneur Grafana dans docker-compose.yml.
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: GLPI-PostgreSQL
+    type: postgres
+    # Le hostname 'postgres' est le nom du service défini dans docker-compose.yml
+    url: postgres:5432
+    database: ${POSTGRES_DB}
+    user: ${POSTGRES_USER}
+    # Le mot de passe est déclaré dans secureJsonData (chiffré en base Grafana)
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      # SSL désactivé en environnement Docker interne (réseau de confiance)
+      sslmode: disable
+      # Version PostgreSQL 15 = 1500 (format requis par le plugin Grafana)
+      postgresVersion: 1500
+      # Activer le mode time series pour les requêtes temporelles
+      timescaledb: false
+    # Datasource par défaut pour les nouveaux panels
+    isDefault: true
+    # Empêcher la suppression accidentelle via l'UI
+    editable: false

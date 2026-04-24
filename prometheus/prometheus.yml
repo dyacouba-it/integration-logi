@@ -1,0 +1,57 @@
+# =============================================================================
+# Configuration Prometheus
+# scrape_interval : fréquence de collecte des métriques (toutes les 15s)
+# evaluation_interval : fréquence d'évaluation des règles d'alerte (15s)
+# Les deux valeurs doivent être cohérentes pour éviter des données manquantes.
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # Label global appliqué à toutes les métriques pour identifier la source
+  external_labels:
+    monitor: 'glpi-stack-monitor'
+
+# Règles d'alerte — répertoire à créer si on ajoute des alertes
+# rule_files:
+#   - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+
+  # ---------------------------------------------------------------------------
+  # Prometheus se scrape lui-même pour exposer ses propres métriques internes
+  # (nombre de séries actives, durée de scrape, etc.)
+  # ---------------------------------------------------------------------------
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ---------------------------------------------------------------------------
+  # cAdvisor — métriques des conteneurs Docker
+  # Expose CPU, mémoire, réseau, I/O pour chaque conteneur de la stack.
+  # Le hostname 'cadvisor' correspond au nom du service dans docker-compose.yml.
+  # ---------------------------------------------------------------------------
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+    metrics_path: /metrics
+    # Délai plus long car cAdvisor peut être lent à répondre au démarrage
+    scrape_timeout: 10s
+
+  # ---------------------------------------------------------------------------
+  # GLPI — tentative de scrape (la plupart des images GLPI n'exposent pas
+  # de métriques Prometheus nativement ; ce job retournera probablement DOWN
+  # mais reste dans la config pour démontrer la configuration multi-cibles)
+  # ---------------------------------------------------------------------------
+  - job_name: 'glpi'
+    static_configs:
+      - targets: ['glpi:80']
+        labels:
+          service: 'glpi'
+    metrics_path: /metrics
+    # Ignorer les erreurs de scrape (GLPI n'expose pas /metrics par défaut)
+    honor_labels: true

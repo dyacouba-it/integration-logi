@@ -1,0 +1,24 @@
+# =============================================================================
+# Provisioning automatique des dashboards Grafana
+# Grafana surveille le répertoire path/ et recharge les JSON toutes les
+# updateIntervalSeconds secondes. Tout fichier .json déposé dans ce dossier
+# sera automatiquement importé sans redémarrage.
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: Dashboards
+    # Type 'file' = lecture depuis le système de fichiers du conteneur
+    type: file
+    # Empêcher la suppression des dashboards via l'UI Grafana
+    disableDeletion: false
+    # Rafraîchissement automatique des dashboards modifiés (en secondes)
+    updateIntervalSeconds: 30
+    # Permettre la mise à jour des dashboards existants lors du rechargement
+    allowUiUpdates: true
+    options:
+      # Chemin dans le conteneur (monté depuis ./grafana/dashboards/)
+      path: /var/lib/grafana/dashboards
+      # Ne pas créer de sous-dossiers à partir de la structure de fichiers
+      foldersFromFilesStructure: false
