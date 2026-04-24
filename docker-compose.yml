@@ -38,12 +38,23 @@ services:
 
   # ---------------------------------------------------------------------------
   # 2. GLPI — Système de gestion de parc informatique (ITSM)
+  #
+  #    POURQUOI UNE IMAGE CUSTOM ?
+  #    diouxx/glpi et les images publiques disponibles sont construites pour
+  #    MySQL/MariaDB uniquement. GLPI 10.x supporte officiellement PostgreSQL 12+
+  #    mais nécessite les extensions PHP pdo_pgsql/pgsql que ces images n'incluent
+  #    pas. Le Dockerfile dans ./glpi/ construit l'image correcte.
+  #
   #    Dépend de postgres avec condition service_healthy : GLPI ne démarre
   #    qu'une fois PostgreSQL opérationnel (évite les erreurs de connexion).
   #    Premier démarrage : 1-2 min pour l'initialisation de la base.
   # ---------------------------------------------------------------------------
   glpi:
-    image: diouxx/glpi
+    # Construction depuis le Dockerfile local (support PostgreSQL)
+    build:
+      context: ./glpi
+      dockerfile: Dockerfile
+    image: glpi-custom:10.0.16
     container_name: glpi_app
     restart: unless-stopped
     depends_on:
@@ -51,20 +62,18 @@ services:
         # Attendre que le health check de postgres soit "healthy"
         condition: service_healthy
     environment:
-      # Paramètres de connexion à la base PostgreSQL
-      MARIADB_HOST: ${GLPI_DB_HOST}
-      MARIADB_DATABASE: ${GLPI_DB_NAME}
-      MARIADB_USER: ${GLPI_DB_USER}
-      MARIADB_PASSWORD: ${GLPI_DB_PASSWORD}
-      # Variables pour l'image diouxx/glpi avec PostgreSQL
-      DB_TYPE: pgsql
-      GLPI_LANG: fr_FR
-      # Version GLPI à déployer (tag stable LTS)
-      VERSION_GLPI: "10.0.16"
+      # Paramètres lus par entrypoint.sh pour configurer la connexion PostgreSQL
+      GLPI_DB_HOST: ${GLPI_DB_HOST}
+      GLPI_DB_PORT: 5432
+      GLPI_DB_NAME: ${GLPI_DB_NAME}
+      GLPI_DB_USER: ${GLPI_DB_USER}
+      GLPI_DB_PASSWORD: ${GLPI_DB_PASSWORD}
     ports:
       # Accès GLPI via http://localhost:8080
       - "8080:80"
     volumes:
+      # Persistance de config_db.php (évite une réinstallation à chaque redémarrage)
+      - glpi_config:/var/www/html/config
       # Persistance des fichiers uploadés (documents, pièces jointes tickets…)
       - glpi_files:/var/www/html/files
       # Persistance des plugins installés
@@ -89,12 +98,18 @@ services:
       # Identifiants administrateur (surcharger dans .env en production)
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
-      # Désactiver la page de login sur les environnements de test
+      # Désactiver l'accès anonyme
       GF_AUTH_ANONYMOUS_ENABLED: "false"
-      # Permettre l'usage de variables d'env dans les fichiers de provisioning
-      GF_RENDERING_SERVER_URL: ""
-      # Chemin vers les dashboards provisionnés
+      # Dashboard d'accueil par défaut
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/glpi_dashboard.json
+      # -----------------------------------------------------------------------
+      # Variables PostgreSQL OBLIGATOIRES pour que grafana/provisioning/
+      # datasources/postgres.yml puisse résoudre les ${...} au démarrage.
+      # Sans ces lignes, les variables restent vides et la datasource échoue.
+      # -----------------------------------------------------------------------
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       # Accès Grafana via http://localhost:3000
       - "3000:3000"
@@ -126,13 +141,17 @@ services:
       - "8081:8080"
     volumes:
       # Accès en lecture seule aux ressources système de l'hôte
+      # Ces chemins fonctionnent sur Linux natif et Windows (WSL2 backend).
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-    devices:
-      - /dev/kmsg
+    # NOTE : /dev/kmsg est volontairement absent.
+    # Sur Windows (WSL2) et macOS, ce device n'existe pas dans le namespace
+    # Docker et provoque une erreur fatale au démarrage du conteneur.
+    # cAdvisor fonctionne correctement sans ce device pour les métriques CPU,
+    # mémoire et réseau dont nous avons besoin.
     networks:
       - glpi_network
 
@@ -173,6 +192,11 @@ services:
 # =============================================================================
 volumes:
   postgres_data:
+    driver: local
+  # glpi_config persiste config_db.php entre les redémarrages.
+  # Sans ce volume, chaque restart tente une réinstallation sur une base
+  # déjà existante, ce qui provoque une erreur "tables already exist".
+  glpi_config:
     driver: local
   glpi_files:
     driver: local

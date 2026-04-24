@@ -10,6 +10,11 @@ apiVersion: 1
 datasources:
   - name: GLPI-PostgreSQL
     type: postgres
+    # uid EXPLICITE — doit correspondre exactement au champ "uid" référencé
+    # dans les panels des dashboards JSON (glpi_dashboard.json).
+    # Sans uid fixe, Grafana génère un UID aléatoire à chaque démarrage,
+    # ce qui rend tous les panels "Datasource not found".
+    uid: "GLPI-PostgreSQL"
     # Le hostname 'postgres' est le nom du service défini dans docker-compose.yml
     url: postgres:5432
     database: ${POSTGRES_DB}

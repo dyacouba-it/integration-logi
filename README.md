@@ -10,9 +10,15 @@
 
 Ce projet déploie une infrastructure d'entreprise complète en **une seule commande** :
 
-```
+```bash
 docker compose up -d
 ```
+
+> **Pourquoi une image GLPI custom ?** Les images publiques (`diouxx/glpi`, `elestio/glpi`) sont
+> construites pour MySQL/MariaDB uniquement. GLPI 10.x supporte officiellement PostgreSQL 12+,
+> mais nécessite les extensions PHP `pdo_pgsql`/`pgsql` absentes de ces images.
+> Le `glpi/Dockerfile` de ce projet construit l'image correcte avec PostgreSQL.
+> La première exécution compile cette image (~2-3 min).
 
 ### Architecture déployée
 
@@ -82,11 +88,14 @@ cp .env.example .env
 docker compose up -d
 ```
 
-> **Premier démarrage** : GLPI prend **1 à 2 minutes** pour initialiser sa base de données. Suivre les logs :
+> **Premier démarrage** : Docker compile d'abord l'image GLPI custom (**~2-3 min**), puis GLPI
+> initialise sa base de données dans PostgreSQL (**1-2 min supplémentaires**).
+> Suivre la progression :
 > ```bash
 > docker compose logs -f glpi
 > ```
-> Attendre le message indiquant que la base est initialisée avant d'accéder à l'interface.
+> Attendre le message `[3/3] Démarrage d'Apache...` avant d'accéder à l'interface.
+> Les redémarrages suivants sont instantanés (l'image et la base sont déjà prêtes).
 
 ### 4. Vérifier que tous les services sont démarrés
 
@@ -207,25 +216,25 @@ rate(container_cpu_usage_seconds_total{name!=""}[5m])
 
 ## Difficultés rencontrées et solutions apportées
 
-### 1. Timestamps Unix dans GLPI
-**Problème :** Grafana ne reconnaît pas automatiquement les colonnes `date_creation` de GLPI car elles sont stockées comme des entiers Unix et non comme des types `TIMESTAMP` natifs PostgreSQL.  
-**Solution :** Utiliser `to_timestamp(date_creation)` dans toutes les requêtes SQL et configurer le format `time_series` avec `timeColumn: "time"` dans les panels Grafana.
+### 1. Incompatibilité images GLPI publiques + PostgreSQL
+**Problème :** `diouxx/glpi` et toutes les images GLPI disponibles sur Docker Hub sont construites pour MySQL/MariaDB. Elles ignorent toute configuration PostgreSQL et utilisent les variables `MARIADB_*`. L'extension PHP `pdo_pgsql` est absente, rendant toute connexion à PostgreSQL impossible.  
+**Solution :** Construction d'une image custom (`glpi/Dockerfile`) basée sur `php:8.2-apache` avec installation manuelle de GLPI 10.0.16 et des extensions `pdo_pgsql`/`pgsql`. L'initialisation de la base se fait via `php bin/console glpi:database:install` au premier démarrage.
 
-### 2. cAdvisor sur Windows (WSL2)
-**Problème :** Les chemins `/var/lib/docker` et `/sys` n'existent pas directement sur Windows. cAdvisor doit accéder au système de fichiers de l'hôte WSL2.  
-**Solution :** Activer WSL2 comme backend Docker Desktop et lancer la stack depuis un terminal WSL2. Le flag `privileged: true` est également nécessaire pour l'accès aux cgroups.
+### 2. UIDs Grafana non définis → panels "Datasource not found"
+**Problème :** Sans champ `uid:` explicite dans les fichiers de provisioning, Grafana génère des UIDs aléatoires à chaque démarrage. Les dashboards JSON référencent des UIDs fixes (`"GLPI-PostgreSQL"`, `"Prometheus"`) qui ne correspondent jamais aux UIDs générés.  
+**Solution :** Ajout de `uid: "GLPI-PostgreSQL"` et `uid: "Prometheus"` dans les fichiers YAML de provisioning, avec correspondance exacte dans les dashboards.
 
-### 3. Ordre de démarrage des services
-**Problème :** GLPI tentait de se connecter à PostgreSQL avant que celui-ci soit prêt, causant des erreurs de connexion au premier démarrage.  
-**Solution :** Implémenter un `healthcheck` sur le service `postgres` et utiliser `condition: service_healthy` dans la dépendance GLPI, ce qui force Docker Compose à attendre que PostgreSQL accepte réellement des connexions.
+### 3. Variables PostgreSQL manquantes dans le conteneur Grafana
+**Problème :** `postgres.yml` utilise `${POSTGRES_DB}`, `${POSTGRES_USER}`, `${POSTGRES_PASSWORD}`, mais ces variables n'étaient pas déclarées dans la section `environment:` du service Grafana. Elles se résolvaient en chaînes vides, rendant la datasource inutilisable.  
+**Solution :** Ajout explicite de `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` dans les variables d'environnement du conteneur Grafana.
 
-### 4. Variables d'environnement dans les fichiers de provisioning Grafana
-**Problème :** Les variables `${POSTGRES_PASSWORD}` dans `postgres.yml` n'étaient pas résolues automatiquement par Grafana.  
-**Solution :** Passer les variables via les variables d'environnement du conteneur Grafana dans `docker-compose.yml` (`environment:`) et s'assurer que le fichier `.env` est bien lu par Docker Compose.
+### 4. `/dev/kmsg` absent sur Windows/macOS → cAdvisor crash
+**Problème :** La directive `devices: - /dev/kmsg` provoque l'erreur `no such file or directory` sur Windows (WSL2) et macOS car ce device kernel n'existe pas dans ces environnements.  
+**Solution :** Suppression de la section `devices:`. cAdvisor fonctionne sans accès à `/dev/kmsg` pour les métriques CPU, RAM et réseau nécessaires au dashboard.
 
-### 5. Résolution DNS entre conteneurs
-**Problème :** Grafana ne pouvait pas résoudre `postgres` comme hostname.  
-**Solution :** S'assurer que tous les services sont sur le même réseau Docker dédié (`glpi_network`). Docker Compose crée automatiquement une entrée DNS pour chaque service, mais uniquement pour les services partageant le même réseau.
+### 5. Volume `config/` manquant → réinstallation en boucle
+**Problème :** Sans volume persistant pour `config_db.php`, chaque redémarrage du conteneur GLPI déclenchait une réinstallation sur une base déjà initialisée, causant l'erreur "tables already exist".  
+**Solution :** Ajout du volume nommé `glpi_config:/var/www/html/config`. Le script `entrypoint.sh` vérifie la présence de `config_db.php` pour choisir entre installation (première fois) et mise à jour (redémarrages).
 
 ---
 
@@ -233,23 +242,26 @@ rate(container_cpu_usage_seconds_total{name!=""}[5m])
 
 ```
 tp-integration/
-├── docker-compose.yml          ← Orchestration de toute la stack
-├── .env                        ← Variables sensibles (non versionné)
-├── .env.example                ← Template à copier
+├── docker-compose.yml               ← Orchestration de toute la stack
+├── .env                             ← Variables sensibles (non versionné)
+├── .env.example                     ← Template à copier
 ├── .gitignore
-├── README.md                   ← Ce fichier
+├── README.md                        ← Ce fichier
+├── glpi/
+│   ├── Dockerfile                   ← Image GLPI custom avec support PostgreSQL
+│   └── entrypoint.sh                ← Init automatique de la base au 1er démarrage
 ├── prometheus/
-│   └── prometheus.yml          ← Configuration scrape Prometheus
+│   └── prometheus.yml               ← Configuration scrape Prometheus
 ├── grafana/
 │   ├── provisioning/
 │   │   ├── datasources/
-│   │   │   ├── postgres.yml    ← Datasource GLPI auto-provisionnée
-│   │   │   └── prometheus.yml  ← Datasource Prometheus auto-provisionnée
+│   │   │   ├── postgres.yml         ← Datasource GLPI auto-provisionnée (uid fixe)
+│   │   │   └── prometheus.yml       ← Datasource Prometheus auto-provisionnée (uid fixe)
 │   │   └── dashboards/
-│   │       └── dashboards.yml  ← Pointeur vers les dashboards JSON
+│   │       └── dashboards.yml       ← Pointeur vers les dashboards JSON
 │   └── dashboards/
-│       ├── glpi_dashboard.json      ← Dashboard GLPI (6+ panels)
-│       └── monitoring_dashboard.json ← Dashboard infra (4 panels)
+│       ├── glpi_dashboard.json      ← Dashboard GLPI (10 panels)
+│       └── monitoring_dashboard.json ← Dashboard infra (4+ panels)
 └── analyse/
-    └── analyse_bdd_glpi.md     ← Analyse du schéma GLPI (Q1-Q5)
+    └── analyse_bdd_glpi.md          ← Analyse du schéma GLPI (Q1-Q5)
 ```

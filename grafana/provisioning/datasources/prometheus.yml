@@ -8,6 +8,9 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
+    # uid EXPLICITE — doit correspondre exactement au champ "uid" référencé
+    # dans les panels des dashboards JSON (monitoring_dashboard.json).
+    uid: "Prometheus"
     # Hostname 'prometheus' = nom du service dans docker-compose.yml
     url: http://prometheus:9090
     # Non définie comme datasource par défaut (PostgreSQL l'est déjà)
