@@ -1,15 +1,19 @@
 # =============================================================================
-# Image GLPI personnalisée avec support PostgreSQL
+# Image GLPI personnalisée avec support MariaDB/MySQL
 #
-# Pourquoi cette image custom ?
-# L'image diouxx/glpi (et la plupart des images GLPI publiques) est construite
-# pour MySQL/MariaDB uniquement. GLPI 10.x supporte officiellement PostgreSQL 12+
-# mais aucune image Docker officielle ne le préconfigure pour pgsql.
-# Cette image installe les extensions PHP nécessaires (pdo_pgsql, pgsql) et
-# lance l'installeur CLI de GLPI au premier démarrage via entrypoint.sh.
+# Pourquoi cette image custom plutôt que diouxx/glpi ?
+#   1. diouxx/glpi télécharge GLPI au démarrage (internet requis chaque fois)
+#   2. Cette image embarque GLPI 10.0.16 directement → démarrage sans internet
+#   3. Contrôle total sur les extensions PHP et la configuration Apache
+#
+# Pourquoi MariaDB et non PostgreSQL ?
+#   GLPI 10.x utilise exclusivement l'extension PHP `mysqli` pour ses connexions
+#   (CLI glpi:database:install et installeur web). `mysqli` parle le protocole
+#   MySQL → compatible MariaDB, incompatible PostgreSQL.
+#   PostgreSQL reste dans la stack Docker pour l'exigence du TP (datasource Grafana).
 #
 # Base : PHP 8.2 + Apache 2.4 (Debian Bookworm)
-# GLPI : 10.0.16 (LTS stable, support PostgreSQL confirmé)
+# GLPI : 10.0.16 (LTS stable)
 # =============================================================================
 
 FROM php:8.2-apache
@@ -17,12 +21,9 @@ FROM php:8.2-apache
 ARG GLPI_VERSION=10.0.16
 
 # ---------------------------------------------------------------------------
-# Dépendances système et bibliothèques C pour les extensions PHP
-# Chaque lib correspond à une extension PHP installée ensuite.
+# Dépendances système pour les extensions PHP
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Pour pdo_pgsql et pgsql
-    libpq-dev \
     # Pour gd (images : JPEG, PNG, FreeType pour les graphes GLPI)
     libjpeg62-turbo-dev \
     libpng-dev \
@@ -35,12 +36,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libldap2-dev \
     # Pour bz2 (compression des sauvegardes GLPI)
     libbz2-dev \
-    # Pour vérifier la connectivité PostgreSQL avant l'installation
+    # Pour pdo_pgsql/pgsql (extensions PostgreSQL disponibles pour démo TP)
+    libpq-dev \
+    # Pour vérifier la connectivité MariaDB avant l'installation
     netcat-openbsd \
     # Pour télécharger l'archive GLPI
     curl \
     # Pour décompresser l'archive GLPI
     unzip \
+    # Client MySQL/MariaDB — requis par entrypoint.sh pour charger seed_tickets.sql
+    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -53,7 +58,12 @@ RUN docker-php-ext-configure gd \
     && docker-php-ext-configure ldap \
         --with-libdir=lib/x86_64-linux-gnu/ \
     && docker-php-ext-install -j$(nproc) \
-        # Support PostgreSQL (PDO + extension native)
+        # Driver MySQL/MariaDB — utilisé par GLPI pour toutes ses connexions DB
+        mysqli \
+        # Driver PDO MySQL — requis par certains plugins GLPI
+        pdo_mysql \
+        # Extensions PostgreSQL (disponibles, non utilisées par GLPI lui-même)
+        # Utile pour la démo TP et les scripts d'administration optionnels
         pdo_pgsql \
         pgsql \
         # Traitement d'images (graphes, pièces jointes)
@@ -89,40 +99,31 @@ RUN { \
 RUN a2enmod rewrite
 
 # ---------------------------------------------------------------------------
-# Téléchargement et installation de GLPI
-# --strip-components=1 retire le préfixe "glpi/" de l'archive pour installer
-# directement dans /var/www/html (évite /var/www/html/glpi/glpi/).
+# Téléchargement et installation de GLPI 10.0.16
+# --strip-components=1 retire le préfixe "glpi/" de l'archive
 # ---------------------------------------------------------------------------
 RUN curl -fsSL \
     "https://github.com/glpi-project/glpi/releases/download/${GLPI_VERSION}/glpi-${GLPI_VERSION}.tgz" \
     -o /tmp/glpi.tgz \
     && tar -xzf /tmp/glpi.tgz --strip-components=1 -C /var/www/html/ \
     && rm /tmp/glpi.tgz \
-    # Propriétaire www-data pour que Apache puisse écrire (config, fichiers)
     && chown -R www-data:www-data /var/www/html/ \
     && find /var/www/html -type d -exec chmod 755 {} \; \
     && find /var/www/html -type f -exec chmod 644 {} \;
 
 # ---------------------------------------------------------------------------
-# Configuration Apache : document root = public/ (bonne pratique GLPI 10.x)
-# Le répertoire public/ est le seul point d'entrée web ; config/ et files/
-# restent inaccessibles depuis le navigateur (sécurité).
+# Configuration Apache
+# DocumentRoot = /var/www/html (pas /var/www/html/public) car :
+#   - install/install.php est hors de public/ (inaccessible sinon)
+#   - Le CLI glpi:database:install crée config_db.php dans config/ (hors public/)
 # ---------------------------------------------------------------------------
 RUN echo '<VirtualHost *:80>\n\
-    DocumentRoot /var/www/html/public\n\
+    DocumentRoot /var/www/html\n\
     \n\
-    <Directory /var/www/html/public>\n\
+    <Directory /var/www/html>\n\
         Options FollowSymLinks\n\
         AllowOverride All\n\
         Require all granted\n\
-    </Directory>\n\
-    \n\
-    # Empêcher laccès direct aux répertoires sensibles\n\
-    <Directory /var/www/html/config>\n\
-        Require all denied\n\
-    </Directory>\n\
-    <Directory /var/www/html/files>\n\
-        Require all denied\n\
     </Directory>\n\
     \n\
     ErrorLog ${APACHE_LOG_DIR}/glpi_error.log\n\
@@ -130,9 +131,10 @@ RUN echo '<VirtualHost *:80>\n\
 </VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
 # ---------------------------------------------------------------------------
-# Script d'entrée : configure la base au premier démarrage
+# Script d'entrée : installe la base automatiquement au 1er démarrage
 # ---------------------------------------------------------------------------
 COPY entrypoint.sh /entrypoint.sh
+COPY seed_tickets.sql /seed_tickets.sql
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 80

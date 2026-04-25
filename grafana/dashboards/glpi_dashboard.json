@@ -2,7 +2,7 @@
   "__inputs": [],
   "__requires": [
     { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
-    { "type": "datasource", "id": "postgres", "name": "PostgreSQL", "version": "1.0.0" },
+    { "type": "datasource", "id": "mysql", "name": "MySQL", "version": "1.0.0" },
     { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
     { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" },
     { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
@@ -39,7 +39,7 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Tickets dont le statut est ouvert (1=Nouveau, 2=En cours attribué, 3=En cours planifié, 4=En attente)",
       "fieldConfig": {
         "defaults": {
@@ -71,16 +71,16 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Tickets dont le statut n'est pas Résolu (5) ni Clos (6)\nSELECT COUNT(*) AS \"Tickets ouverts\"\nFROM glpi_tickets\nWHERE status NOT IN (5, 6)\n  AND is_deleted = 0;",
+          "rawSql": "SELECT COUNT(*) AS \"Tickets ouverts\"\nFROM glpi_tickets\nWHERE status NOT IN (5, 6)\n  AND is_deleted = 0;",
           "refId": "A"
         }
       ]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Tickets créés depuis minuit aujourd'hui",
       "fieldConfig": {
         "defaults": {
@@ -111,16 +111,16 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- date_creation est un timestamp Unix (entier) dans GLPI\n-- EXTRACT(EPOCH) convertit minuit local en timestamp Unix\nSELECT COUNT(*) AS \"Aujourd'hui\"\nFROM glpi_tickets\nWHERE date_creation >= EXTRACT(EPOCH FROM date_trunc('day', NOW()))\n  AND is_deleted = 0;",
+          "rawSql": "-- date_creation est un TIMESTAMP natif MariaDB — comparaison directe sans conversion\nSELECT COUNT(*) AS \"Aujourd'hui\"\nFROM glpi_tickets\nWHERE DATE(date_creation) = CURDATE()\n  AND is_deleted = 0;",
           "refId": "A"
         }
       ]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Total des ordinateurs et périphériques enregistrés dans GLPI",
       "fieldConfig": {
         "defaults": {
@@ -147,17 +147,17 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Union entre ordinateurs et périphériques non supprimés\nSELECT (\n  (SELECT COUNT(*) FROM glpi_computers WHERE is_deleted = 0)\n  +\n  (SELECT COUNT(*) FROM glpi_peripherals WHERE is_deleted = 0)\n) AS \"Équipements\";",
+          "rawSql": "SELECT (\n  (SELECT COUNT(*) FROM glpi_computers WHERE is_deleted = 0)\n  +\n  (SELECT COUNT(*) FROM glpi_peripherals WHERE is_deleted = 0)\n) AS \"Equipements\";",
           "refId": "A"
         }
       ]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
-      "description": "Tickets résolus ce mois-ci",
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
+      "description": "Tickets résolus ou clos depuis le 1er du mois courant",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -183,9 +183,9 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Tickets résolus (status=5) ou clos (status=6) depuis le début du mois\nSELECT COUNT(*) AS \"Résolus\"\nFROM glpi_tickets\nWHERE status IN (5, 6)\n  AND date_creation >= EXTRACT(EPOCH FROM date_trunc('month', NOW()))\n  AND is_deleted = 0;",
+          "rawSql": "-- DATE_FORMAT('%Y-%m-01') = premier jour du mois courant (type TIMESTAMP comparé à STRING)\nSELECT COUNT(*) AS \"Resolus\"\nFROM glpi_tickets\nWHERE status IN (5, 6)\n  AND date_creation >= DATE_FORMAT(NOW(), '%Y-%m-01')\n  AND is_deleted = 0;",
           "refId": "A"
         }
       ]
@@ -200,7 +200,7 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Distribution des tickets selon leur statut courant",
       "fieldConfig": {
         "defaults": {
@@ -221,16 +221,16 @@
       "type": "piechart",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Traduction des codes statut GLPI en libellés lisibles\n-- 1=Nouveau, 2=En cours (attribué), 3=En cours (planifié),\n-- 4=En attente, 5=Résolu, 6=Clos\nSELECT\n  CASE status\n    WHEN 1 THEN 'Nouveau'\n    WHEN 2 THEN 'En cours (attribué)'\n    WHEN 3 THEN 'En cours (planifié)'\n    WHEN 4 THEN 'En attente'\n    WHEN 5 THEN 'Résolu'\n    WHEN 6 THEN 'Clos'\n    ELSE 'Inconnu (' || status::text || ')'\n  END AS statut,\n  COUNT(*) AS nombre\nFROM glpi_tickets\nWHERE is_deleted = 0\nGROUP BY status\nORDER BY status;",
+          "rawSql": "SELECT\n  CASE status\n    WHEN 1 THEN 'Nouveau'\n    WHEN 2 THEN 'En cours (attribue)'\n    WHEN 3 THEN 'En cours (planifie)'\n    WHEN 4 THEN 'En attente'\n    WHEN 5 THEN 'Resolu'\n    WHEN 6 THEN 'Clos'\n    ELSE CONCAT('Inconnu (', status, ')')\n  END AS statut,\n  COUNT(*) AS nombre\nFROM glpi_tickets\nWHERE is_deleted = 0\nGROUP BY status\nORDER BY status;",
           "refId": "A"
         }
       ]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Nombre de tickets créés par jour sur les 30 derniers jours",
       "fieldConfig": {
         "defaults": {
@@ -270,11 +270,10 @@
       "type": "timeseries",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "time_series",
-          "rawSql": "-- to_timestamp() convertit le timestamp Unix GLPI en timestamp PostgreSQL\n-- DATE_TRUNC agrège par jour pour la série temporelle\nSELECT\n  DATE_TRUNC('day', to_timestamp(date_creation)) AS time,\n  COUNT(*) AS \"Tickets créés\"\nFROM glpi_tickets\nWHERE date_creation >= EXTRACT(EPOCH FROM NOW() - INTERVAL '30 days')\n  AND is_deleted = 0\nGROUP BY 1\nORDER BY 1;",
-          "refId": "A",
-          "timeColumn": "time"
+          "rawSql": "-- date_creation est TIMESTAMP : DATE() l'extrait directement, sans conversion\nSELECT\n  DATE(date_creation) AS time,\n  COUNT(*) AS \"Tickets crees\"\nFROM glpi_tickets\nWHERE date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)\n  AND is_deleted = 0\nGROUP BY DATE(date_creation)\nORDER BY time;",
+          "refId": "A"
         }
       ]
     },
@@ -288,7 +287,7 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Top 5 des catégories GLPI générant le plus de tickets",
       "fieldConfig": {
         "defaults": {
@@ -330,16 +329,16 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Jointure avec glpi_itilcategories pour obtenir le nom de catégorie\n-- COALESCE gère les tickets sans catégorie assignée\nSELECT\n  COALESCE(cat.completename, 'Sans catégorie') AS catégorie,\n  COUNT(t.id) AS nombre\nFROM glpi_tickets t\nLEFT JOIN glpi_itilcategories cat ON t.itilcategories_id = cat.id\nWHERE t.is_deleted = 0\nGROUP BY cat.completename\nORDER BY nombre DESC\nLIMIT 5;",
+          "rawSql": "SELECT\n  COALESCE(cat.completename, 'Sans categorie') AS categorie,\n  COUNT(t.id) AS nombre\nFROM glpi_tickets t\nLEFT JOIN glpi_itilcategories cat ON t.itilcategories_id = cat.id\nWHERE t.is_deleted = 0\nGROUP BY cat.completename\nORDER BY nombre DESC\nLIMIT 5;",
           "refId": "A"
         }
       ]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Les 20 tickets les plus récents avec leur statut et priorité",
       "fieldConfig": {
         "defaults": {
@@ -360,27 +359,11 @@
                 "id": "mappings",
                 "value": [
                   { "options": { "Nouveau": { "color": "blue", "index": 0 } }, "type": "value" },
-                  { "options": { "En cours (attribué)": { "color": "orange", "index": 1 } }, "type": "value" },
-                  { "options": { "En cours (planifié)": { "color": "yellow", "index": 2 } }, "type": "value" },
+                  { "options": { "En cours (attribue)": { "color": "orange", "index": 1 } }, "type": "value" },
+                  { "options": { "En cours (planifie)": { "color": "yellow", "index": 2 } }, "type": "value" },
                   { "options": { "En attente": { "color": "purple", "index": 3 } }, "type": "value" },
-                  { "options": { "Résolu": { "color": "green", "index": 4 } }, "type": "value" },
+                  { "options": { "Resolu": { "color": "green", "index": 4 } }, "type": "value" },
                   { "options": { "Clos": { "color": "grey", "index": 5 } }, "type": "value" }
-                ]
-              },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Priorité" },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  { "options": { "Très haute": { "color": "dark-red", "index": 0 } }, "type": "value" },
-                  { "options": { "Haute": { "color": "red", "index": 1 } }, "type": "value" },
-                  { "options": { "Moyenne": { "color": "orange", "index": 2 } }, "type": "value" },
-                  { "options": { "Basse": { "color": "green", "index": 3 } }, "type": "value" },
-                  { "options": { "Très basse": { "color": "blue", "index": 4 } }, "type": "value" }
                 ]
               },
               { "id": "custom.cellOptions", "value": { "type": "color-text" } }
@@ -394,15 +377,15 @@
         "cellHeight": "sm",
         "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
         "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Date création" }]
+        "sortBy": [{ "desc": true, "displayName": "Date creation" }]
       },
       "title": "20 derniers tickets",
       "type": "table",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Liste des 20 tickets les plus récents avec libellés lisibles\nSELECT\n  t.id AS \"ID\",\n  t.name AS \"Titre\",\n  CASE t.status\n    WHEN 1 THEN 'Nouveau'\n    WHEN 2 THEN 'En cours (attribué)'\n    WHEN 3 THEN 'En cours (planifié)'\n    WHEN 4 THEN 'En attente'\n    WHEN 5 THEN 'Résolu'\n    WHEN 6 THEN 'Clos'\n  END AS \"Statut\",\n  CASE t.priority\n    WHEN 1 THEN 'Très haute'\n    WHEN 2 THEN 'Haute'\n    WHEN 3 THEN 'Moyenne'\n    WHEN 4 THEN 'Basse'\n    WHEN 5 THEN 'Très basse'\n    WHEN 6 THEN 'Majeure'\n  END AS \"Priorité\",\n  -- Conversion timestamp Unix → date lisible\n  to_char(to_timestamp(t.date_creation), 'DD/MM/YYYY HH24:MI') AS \"Date création\"\nFROM glpi_tickets t\nWHERE t.is_deleted = 0\nORDER BY t.date_creation DESC\nLIMIT 20;",
+          "rawSql": "-- date_creation TIMESTAMP : DATE_FORMAT() fonctionne directement sans FROM_UNIXTIME\nSELECT\n  t.id AS \"ID\",\n  t.name AS \"Titre\",\n  CASE t.status\n    WHEN 1 THEN 'Nouveau'\n    WHEN 2 THEN 'En cours (attribue)'\n    WHEN 3 THEN 'En cours (planifie)'\n    WHEN 4 THEN 'En attente'\n    WHEN 5 THEN 'Resolu'\n    WHEN 6 THEN 'Clos'\n  END AS \"Statut\",\n  CASE t.priority\n    WHEN 1 THEN 'Tres haute'\n    WHEN 2 THEN 'Haute'\n    WHEN 3 THEN 'Moyenne'\n    WHEN 4 THEN 'Basse'\n    WHEN 5 THEN 'Tres basse'\n    WHEN 6 THEN 'Majeure'\n  END AS \"Priorite\",\n  DATE_FORMAT(t.date_creation, '%d/%m/%Y %H:%i') AS \"Date creation\"\nFROM glpi_tickets t\nWHERE t.is_deleted = 0\nORDER BY t.date_creation DESC\nLIMIT 20;",
           "refId": "A"
         }
       ]
@@ -417,8 +400,8 @@
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
-      "description": "Répartition des tickets par niveau de priorité — indicateur clé pour un responsable informatique",
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
+      "description": "Répartition des tickets ouverts par niveau de priorité",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -438,28 +421,7 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Très haute" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Haute" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Moyenne" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Basse" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Très basse" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "id": 9,
@@ -476,20 +438,20 @@
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 200
       },
-      "title": "Tickets par priorité (Panel libre — vue responsable)",
+      "title": "Tickets ouverts par priorité",
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "table",
-          "rawSql": "-- Répartition par priorité — vision critique pour un responsable IT\n-- Permet d'identifier rapidement les tickets urgents en attente\nSELECT\n  CASE t.priority\n    WHEN 1 THEN 'Très haute'\n    WHEN 2 THEN 'Haute'\n    WHEN 3 THEN 'Moyenne'\n    WHEN 4 THEN 'Basse'\n    WHEN 5 THEN 'Très basse'\n    WHEN 6 THEN 'Majeure'\n    ELSE 'Non défini'\n  END AS priorité,\n  COUNT(*) AS nombre\nFROM glpi_tickets t\nWHERE t.is_deleted = 0\n  AND t.status NOT IN (5, 6)\nGROUP BY t.priority\nORDER BY t.priority;",
+          "rawSql": "SELECT\n  CASE t.priority\n    WHEN 1 THEN 'Tres haute'\n    WHEN 2 THEN 'Haute'\n    WHEN 3 THEN 'Moyenne'\n    WHEN 4 THEN 'Basse'\n    WHEN 5 THEN 'Tres basse'\n    WHEN 6 THEN 'Majeure'\n    ELSE 'Non defini'\n  END AS priorite,\n  COUNT(*) AS nombre\nFROM glpi_tickets t\nWHERE t.is_deleted = 0\n  AND t.status NOT IN (5, 6)\nGROUP BY t.priority\nORDER BY t.priority;",
           "refId": "A"
         }
       ]
     },
 
     {
-      "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+      "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
       "description": "Tickets créés par mois sur les 12 derniers mois — vision tendancielle",
       "fieldConfig": {
         "defaults": {
@@ -529,11 +491,10 @@
       "type": "timeseries",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "GLPI-PostgreSQL" },
+          "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "time_series",
-          "rawSql": "-- Agrégation mensuelle des tickets créés sur 12 mois glissants\nSELECT\n  DATE_TRUNC('month', to_timestamp(date_creation)) AS time,\n  COUNT(*) AS \"Tickets / mois\"\nFROM glpi_tickets\nWHERE date_creation >= EXTRACT(EPOCH FROM NOW() - INTERVAL '12 months')\n  AND is_deleted = 0\nGROUP BY 1\nORDER BY 1;",
-          "refId": "A",
-          "timeColumn": "time"
+          "rawSql": "-- DATE_FORMAT sur TIMESTAMP natif — pas besoin de FROM_UNIXTIME\nSELECT\n  DATE_FORMAT(date_creation, '%Y-%m-01') AS time,\n  COUNT(*) AS \"Tickets par mois\"\nFROM glpi_tickets\nWHERE date_creation >= DATE_SUB(NOW(), INTERVAL 12 MONTH)\n  AND is_deleted = 0\nGROUP BY DATE_FORMAT(date_creation, '%Y-%m-01')\nORDER BY time;",
+          "refId": "A"
         }
       ]
     }
@@ -541,7 +502,7 @@
   ],
   "refresh": "30s",
   "schemaVersion": 38,
-  "tags": ["glpi", "itsm", "tickets", "parc-informatique"],
+  "tags": ["glpi", "itsm", "tickets", "parc-informatique", "mariadb"],
   "templating": { "list": [] },
   "time": { "from": "now-30d", "to": "now" },
   "timepicker": {},

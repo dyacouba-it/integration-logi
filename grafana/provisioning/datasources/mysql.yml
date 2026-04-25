@@ -1,0 +1,40 @@
+# =============================================================================
+# Provisioning automatique de la datasource MySQL/MariaDB (GLPI)
+#
+# Ce fichier est lu au démarrage de Grafana.
+# Les variables ${...} sont résolues depuis les variables d'environnement
+# passées au conteneur Grafana dans docker-compose.yml.
+# MARIADB_DATABASE, MARIADB_USER, MARIADB_PASSWORD doivent être déclarées
+# dans la section environment: du service grafana (sinon chaînes vides).
+#
+# Pourquoi MySQL et non PostgreSQL ?
+# GLPI stocke ses données dans MariaDB (protocol MySQL). Cette datasource
+# est celle qui alimente le dashboard "GLPI — Gestion du parc informatique".
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: GLPI-MySQL
+    type: mysql
+    # uid EXPLICITE — doit correspondre exactement au champ "uid" référencé
+    # dans tous les panels de glpi_dashboard.json.
+    uid: "GLPI-MySQL"
+    # Le hostname 'mariadb' est le nom du service dans docker-compose.yml.
+    # Format host:port requis par le plugin MySQL de Grafana.
+    url: mariadb:3306
+    database: ${MARIADB_DATABASE}
+    user: ${MARIADB_USER}
+    # Le mot de passe est déclaré dans secureJsonData (chiffré en base Grafana)
+    secureJsonData:
+      password: ${MARIADB_PASSWORD}
+    jsonData:
+      # Taille maximale du pool de connexions (0 = illimité)
+      maxOpenConns: 0
+      # Connexions inactives conservées dans le pool
+      maxIdleConns: 2
+      # Durée de vie maximale d'une connexion (secondes)
+      connMaxLifetime: 14400
+    # Datasource par défaut — alimente le dashboard GLPI principal
+    isDefault: true
+    editable: false

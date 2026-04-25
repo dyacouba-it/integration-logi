@@ -1,94 +1,128 @@
 #!/bin/bash
 # =============================================================================
-# Script d'entrée GLPI — initialisation automatique avec PostgreSQL
+# Script d'entrée GLPI — Installation automatique via le CLI GLPI + MariaDB
 #
-# Logique :
-#   1. Attendre que PostgreSQL accepte les connexions (via netcat TCP)
-#   2. Si config/config_db.php absent → premier démarrage : lancer l'installeur
-#   3. Si config/config_db.php présent → démarrage suivant : lancer le updater
-#   4. Démarrer Apache
+# Pourquoi MariaDB et non PostgreSQL ?
+# Le CLI GLPI (glpi:database:install) et l'installeur web (install/install.php)
+# n'utilisent que l'extension PHP mysqli — incompatible avec PostgreSQL (port 5432).
+# MariaDB parle le protocole MySQL, donc mysqli fonctionne parfaitement avec elle.
+# PostgreSQL reste dans la stack Docker pour l'exigence du TP mais GLPI n'y
+# est pas connecté.
 #
-# Pourquoi vérifier config_db.php ?
-#   Ce fichier est créé par GLPI après une installation réussie. Sa présence
-#   indique que la base est déjà initialisée, ce qui évite de relancer
-#   glpi:database:install sur une base existante (provoque une erreur).
+# Ce script au premier démarrage :
+#   1. Attend que MariaDB soit joignable (TCP)
+#   2. Corrige les permissions des volumes Docker
+#   3. Exécute glpi:database:install (CLI, non-interactif)
+#   4. Démarre Apache
+#
+# Redémarrages suivants : config_db.php existe → passe directement à Apache.
 # =============================================================================
 
 set -e
 
-GLPI_DIR="/var/www/html"
-CONFIG_DB="${GLPI_DIR}/config/config_db.php"
-
-# Valeurs par défaut (surchargées par les variables d'environnement du conteneur)
-DB_HOST="${GLPI_DB_HOST:-postgres}"
-DB_PORT="${GLPI_DB_PORT:-5432}"
-DB_NAME="${GLPI_DB_NAME:-glpi}"
-DB_USER="${GLPI_DB_USER:-glpi_user}"
-DB_PASS="${GLPI_DB_PASSWORD:-changeme}"
+MARIADB_HOST="${MARIADB_HOST:-mariadb}"
+MARIADB_PORT="${MARIADB_PORT:-3306}"
+MARIADB_DATABASE="${MARIADB_DATABASE:-glpi}"
+MARIADB_USER="${MARIADB_USER:-glpi_user}"
+MARIADB_PASSWORD="${MARIADB_PASSWORD:-glpi}"
 
 echo "============================================================"
 echo " GLPI — Démarrage du conteneur"
-echo " Cible PostgreSQL : ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+echo " Base de données : ${MARIADB_HOST}:${MARIADB_PORT}/${MARIADB_DATABASE}"
 echo "============================================================"
 
 # ---------------------------------------------------------------------------
-# Étape 1 : Attendre que PostgreSQL soit joignable (connectivité TCP)
-# La condition service_healthy de Docker Compose garantit déjà que PostgreSQL
-# est prêt, mais cette boucle protège des rares cas de race condition.
+# [1/3] Attendre que MariaDB soit joignable (TCP)
 # ---------------------------------------------------------------------------
-echo "[1/3] Attente de PostgreSQL à ${DB_HOST}:${DB_PORT}..."
-TIMEOUT=60
-while ! nc -z "${DB_HOST}" "${DB_PORT}" 2>/dev/null; do
+echo "[1/3] Attente de MariaDB à ${MARIADB_HOST}:${MARIADB_PORT}..."
+TIMEOUT=90
+while ! nc -z "${MARIADB_HOST}" "${MARIADB_PORT}" 2>/dev/null; do
     TIMEOUT=$((TIMEOUT - 1))
     if [ "${TIMEOUT}" -le 0 ]; then
-        echo "ERREUR : Impossible de joindre PostgreSQL après 60 secondes."
-        echo "Vérifiez que le service 'postgres' est healthy avec : docker compose ps"
+        echo "ERREUR : MariaDB non joignable après 90s. Vérifier le service mariadb."
         exit 1
     fi
-    echo "  PostgreSQL pas encore disponible, nouvelle tentative dans 2s... (${TIMEOUT}s restantes)"
     sleep 2
 done
-echo "  PostgreSQL est joignable."
+echo "  MariaDB est joignable."
 
 # ---------------------------------------------------------------------------
-# Étape 2 : Installation ou mise à jour de la base GLPI
+# Corriger les permissions des répertoires inscriptibles
+# Les volumes Docker sont montés root:root par défaut.
+# Apache tourne en www-data et doit pouvoir écrire dans files/ et config/.
 # ---------------------------------------------------------------------------
-if [ ! -f "${CONFIG_DB}" ]; then
-    echo "[2/3] Premier démarrage détecté — installation de la base GLPI..."
-    echo "  Cela peut prendre 1 à 2 minutes..."
+mkdir -p /var/www/html/files/_log \
+         /var/www/html/files/_tmp \
+         /var/www/html/files/_sessions \
+         /var/www/html/marketplace
+chown -R www-data:www-data \
+    /var/www/html/files/ \
+    /var/www/html/config/ \
+    /var/www/html/plugins/ \
+    /var/www/html/marketplace/ 2>/dev/null || true
+chmod -R 755 /var/www/html/files/ /var/www/html/config/ 2>/dev/null || true
 
-    # glpi:database:install crée toutes les tables GLPI dans PostgreSQL
-    # et génère le fichier config/config_db.php avec les paramètres de connexion.
-    php "${GLPI_DIR}/bin/console" glpi:database:install \
-        --db-host="${DB_HOST}" \
-        --db-port="${DB_PORT}" \
-        --db-name="${DB_NAME}" \
-        --db-user="${DB_USER}" \
-        --db-password="${DB_PASS}" \
+# ---------------------------------------------------------------------------
+# [2/3] Installation de la base GLPI (premier démarrage uniquement)
+# ---------------------------------------------------------------------------
+CONFIG_DB="/var/www/html/config/config_db.php"
+
+if [ -f "${CONFIG_DB}" ]; then
+    echo "[2/3] GLPI déjà installé (config_db.php présent) — démarrage direct."
+else
+    echo "[2/3] Première installation — initialisation de la base GLPI..."
+    echo "      Connexion : ${MARIADB_USER}@${MARIADB_HOST}:${MARIADB_PORT}/${MARIADB_DATABASE}"
+
+    # glpi:database:install utilise mysqli (compatible MariaDB).
+    # --no-interaction : pas de prompt de confirmation
+    # Sans --force : échoue proprement si les tables existent déjà
+    php /var/www/html/bin/console glpi:database:install \
+        --db-host="${MARIADB_HOST}" \
+        --db-port="${MARIADB_PORT}" \
+        --db-name="${MARIADB_DATABASE}" \
+        --db-user="${MARIADB_USER}" \
+        --db-password="${MARIADB_PASSWORD}" \
         --no-interaction \
         2>&1
 
-    # Restaurer les permissions après la création de config_db.php
-    chown -R www-data:www-data \
-        "${GLPI_DIR}/config" \
-        "${GLPI_DIR}/files" \
-        "${GLPI_DIR}/plugins" \
-        "${GLPI_DIR}/marketplace" 2>/dev/null || true
+    # Corriger à nouveau les permissions après l'install :
+    # le CLI tourne en root et crée tous ses fichiers (config_db.php, php-errors.log…)
+    # avec owner root → Apache (www-data) ne peut pas les lire/écrire.
+    # find -not -user évite de toucher les fichiers déjà correctement propriété de www-data.
+    find /var/www/html/files/ /var/www/html/config/ \
+        -not -user www-data \
+        -exec chown www-data:www-data {} \; 2>/dev/null || true
 
-    echo "  Installation terminée avec succès."
-else
-    echo "[2/3] Base déjà configurée — vérification des mises à jour de schéma..."
+    # Corriger à nouveau les permissions après l'install :
+    # le CLI tourne en root et crée tous ses fichiers (config_db.php, php-errors.log…)
+    # avec owner root → Apache (www-data) ne peut pas les lire/écrire.
+    find /var/www/html/files/ /var/www/html/config/ \
+        -not -user www-data \
+        -exec chown www-data:www-data {} \; 2>/dev/null || true
 
-    # glpi:database:update applique les migrations manquantes (upgrade de version)
-    # Le flag --allow-unstable accepte les migrations en cours de stabilisation.
-    php "${GLPI_DIR}/bin/console" glpi:database:update \
-        --no-interaction \
-        --allow-unstable \
-        2>&1 || echo "  Aucune mise à jour nécessaire."
+    # -------------------------------------------------------------------
+    # Chargement des données de démonstration
+    # seed_tickets.sql insère 5 catégories ITIL et 22 tickets répartis
+    # sur 12 mois, pour que les dashboards Grafana affichent des données
+    # dès le premier démarrage.
+    # -------------------------------------------------------------------
+    if [ -f /seed_tickets.sql ]; then
+        echo "  Chargement des données de démonstration (tickets)..."
+        mysql --ssl=0 -h "${MARIADB_HOST}" -P "${MARIADB_PORT}" \
+              -u "${MARIADB_USER}" -p"${MARIADB_PASSWORD}" \
+              "${MARIADB_DATABASE}" < /seed_tickets.sql 2>&1 \
+            && echo "  ✓ 22 tickets de démonstration insérés." \
+            || echo "  Avertissement : seed partiel (données peut-être déjà présentes)."
+    fi
+
+    echo ""
+    echo "  ✓ GLPI prêt."
+    echo "  Accès : http://localhost:8082  —  glpi / glpi"
+    echo ""
 fi
 
 # ---------------------------------------------------------------------------
-# Étape 3 : Démarrer Apache (remplace le processus courant via exec)
+# [3/3] Démarrer Apache (remplace le processus courant via exec)
 # ---------------------------------------------------------------------------
 echo "[3/3] Démarrage d'Apache..."
 exec "$@"

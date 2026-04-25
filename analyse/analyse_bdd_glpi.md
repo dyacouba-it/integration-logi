@@ -1,9 +1,11 @@
 # Analyse de la base de données GLPI
 
-## Connexion à la base
+## Connexion à la base MariaDB
 
 ```bash
-docker compose exec postgres psql -U glpi_user -d glpi
+# Se connecter au shell MariaDB dans le conteneur
+docker compose exec mariadb mysql -u glpi_user -p glpi
+# Saisir le mot de passe MARIADB_PASSWORD depuis .env
 ```
 
 ---
@@ -13,20 +15,24 @@ docker compose exec postgres psql -U glpi_user -d glpi
 ### Requête de listing
 
 ```sql
--- Lister toutes les tables du schéma public avec leur nombre approximatif de lignes
+-- Lister les tables GLPI avec leur taille approximative
+-- MySQL/MariaDB : information_schema.tables pour les métadonnées
 SELECT
-  tablename,
-  pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS taille
-FROM pg_tables
-WHERE schemaname = 'public'
-ORDER BY tablename;
+  table_name,
+  ROUND((data_length + index_length) / 1024, 0) AS taille_ko,
+  table_rows AS lignes_approx
+FROM information_schema.tables
+WHERE table_schema = DATABASE()  -- la base courante (glpi)
+  AND table_type = 'BASE TABLE'
+ORDER BY (data_length + index_length) DESC
+LIMIT 20;
 ```
 
 ### Description des 10 tables clés
 
 | Table | Rôle |
 |-------|------|
-| `glpi_tickets` | Table centrale de l'ITSM. Stocke tous les tickets (incidents, demandes de service). Chaque ligne représente un ticket avec son statut, priorité, date de création (timestamp Unix), entité, catégorie et type. |
+| `glpi_tickets` | Table centrale de l'ITSM. Stocke tous les tickets (incidents, demandes de service). Chaque ligne représente un ticket avec son statut, priorité, date de création (colonne DATETIME/TIMESTAMP native), entité, catégorie et type. |
 | `glpi_computers` | Inventaire des ordinateurs (fixes et portables). Contient le nom, le numéro de série, le modèle, le système d'exploitation et l'utilisateur associé. |
 | `glpi_users` | Annuaire des utilisateurs GLPI (techniciens, utilisateurs finaux, administrateurs). Contient les informations de profil, les droits et les entités accessibles. |
 | `glpi_entities` | Structure organisationnelle hiérarchique (entreprises, sites, départements). Tous les objets GLPI appartiennent à une entité. |
@@ -54,15 +60,15 @@ ORDER BY tablename;
 SELECT
   CASE status
     WHEN 1 THEN 'Nouveau'
-    WHEN 2 THEN 'En cours (attribué)'
-    WHEN 3 THEN 'En cours (planifié)'
+    WHEN 2 THEN 'En cours (attribue)'
+    WHEN 3 THEN 'En cours (planifie)'
     WHEN 4 THEN 'En attente'
-    WHEN 5 THEN 'Résolu'
+    WHEN 5 THEN 'Resolu'
     WHEN 6 THEN 'Clos'
-    ELSE 'Statut inconnu (' || status::text || ')'
+    ELSE CONCAT('Statut inconnu (', status, ')')
   END AS statut,
   COUNT(*) AS nombre,
-  -- Pourcentage par rapport au total
+  -- Pourcentage par rapport au total (window function, MariaDB 10.2+)
   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS pourcentage
 FROM glpi_tickets
 WHERE is_deleted = 0  -- exclure les tickets supprimés (corbeille)
@@ -84,23 +90,22 @@ ORDER BY status;
 
 ```sql
 -- Évolution mensuelle des créations de tickets sur les 12 derniers mois glissants
--- NOTE : date_creation dans GLPI est un entier Unix (secondes depuis epoch)
--- to_timestamp() le convertit en type TIMESTAMP pour DATE_TRUNC
+-- NOTE : date_creation dans GLPI 10.x est un type DATETIME/TIMESTAMP natif,
+-- pas un entier Unix — on utilise directement DATE_FORMAT() sans FROM_UNIXTIME()
 
 SELECT
-  to_char(
-    DATE_TRUNC('month', to_timestamp(date_creation)),
-    'YYYY-MM'
-  ) AS mois,
-  COUNT(*) AS tickets_créés,
-  -- Cumul glissant pour visualiser la tendance
-  SUM(COUNT(*)) OVER (ORDER BY DATE_TRUNC('month', to_timestamp(date_creation))) AS cumul
+  DATE_FORMAT(date_creation, '%Y-%m') AS mois,
+  COUNT(*) AS tickets_crees,
+  -- Cumul glissant pour visualiser la tendance (window function MariaDB 10.2+)
+  SUM(COUNT(*)) OVER (
+    ORDER BY DATE_FORMAT(date_creation, '%Y-%m')
+  ) AS cumul
 FROM glpi_tickets
 WHERE
-  -- Filtre sur les 12 derniers mois (conversion INTERVAL → epoch)
-  date_creation >= EXTRACT(EPOCH FROM NOW() - INTERVAL '12 months')
+  -- Filtre sur les 12 derniers mois (comparaison directe DATETIME)
+  date_creation >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
   AND is_deleted = 0
-GROUP BY DATE_TRUNC('month', to_timestamp(date_creation))
+GROUP BY DATE_FORMAT(date_creation, '%Y-%m')
 ORDER BY mois;
 ```
 
@@ -116,13 +121,13 @@ ORDER BY mois;
 -- Méthode 1 : via le champ users_id direct (utilisateur principal)
 SELECT
   u.name          AS login_utilisateur,
-  u.firstname     AS prénom,
+  u.firstname     AS prenom,
   u.realname      AS nom,
   c.name          AS ordinateur,
-  c.serial        AS numéro_série,
+  c.serial        AS numero_serie,
   c.otherserial   AS inventaire,
-  os.name         AS système_exploitation,
-  e.completename  AS entité
+  os.name         AS systeme_exploitation,
+  e.completename  AS entite
 FROM glpi_users u
 JOIN glpi_computers c ON c.users_id = u.id
 LEFT JOIN glpi_operatingsystems os ON os.id = c.operatingsystems_id
@@ -134,21 +139,21 @@ ORDER BY c.name;
 
 -- Méthode 2 : via la table de liaison glpi_items_users (associations multiples)
 SELECT
-  u.name          AS login,
-  u.firstname || ' ' || u.realname AS nom_complet,
-  gi.itemtype     AS type_équipement,
+  u.name                              AS login,
+  CONCAT(u.firstname, ' ', u.realname) AS nom_complet,
+  gi.itemtype                          AS type_equipement,
   -- Résolution dynamique du nom selon le type d'item
   CASE gi.itemtype
     WHEN 'Computer'   THEN (SELECT name FROM glpi_computers WHERE id = gi.items_id)
     WHEN 'Peripheral' THEN (SELECT name FROM glpi_peripherals WHERE id = gi.items_id)
     WHEN 'Phone'      THEN (SELECT name FROM glpi_phones WHERE id = gi.items_id)
     WHEN 'Printer'    THEN (SELECT name FROM glpi_printers WHERE id = gi.items_id)
-  END AS nom_équipement,
+  END AS nom_equipement,
   gi.type         AS type_association  -- 1=Utilisateur principal, 4=Contact
 FROM glpi_users u
 JOIN glpi_items_users gi ON gi.users_id = u.id
 WHERE u.name = 'nom_utilisateur'
-ORDER BY gi.itemtype, nom_équipement;
+ORDER BY gi.itemtype, nom_equipement;
 ```
 
 ---
@@ -161,13 +166,15 @@ ORDER BY gi.itemtype, nom_équipement;
 -- Explorer la structure de la table glpi_slms
 SELECT column_name, data_type, character_maximum_length
 FROM information_schema.columns
-WHERE table_name = 'glpi_slms'
+WHERE table_schema = DATABASE()
+  AND table_name = 'glpi_slms'
 ORDER BY ordinal_position;
 
 -- Explorer les niveaux SLA (escalades)
 SELECT column_name, data_type
 FROM information_schema.columns
-WHERE table_name = 'glpi_slalevels'
+WHERE table_schema = DATABASE()
+  AND table_name = 'glpi_slalevels'
 ORDER BY ordinal_position;
 ```
 
@@ -187,27 +194,27 @@ glpi_tickets       → Référence les SLA via :
 
 ```sql
 -- Analyse du respect des SLA pour les tickets résolus
--- time_to_own et time_to_resolve sont en secondes dans GLPI
+-- time_to_own et time_to_resolve sont des colonnes DATETIME (échéances absolues)
+-- takeintoaccount_delay_stat et close_delay_stat sont des entiers en secondes
+-- Comparaison SLA : solvedate (DATETIME réelle) vs time_to_resolve (DATETIME cible)
 
 SELECT
-  t.id                            AS ticket_id,
-  t.name                          AS titre,
-  slm_tto.name                    AS sla_prise_en_charge,
-  slm_ttr.name                    AS sla_résolution,
-  -- Délai de prise en charge réel vs SLA
-  t.time_to_own                   AS délai_prise_en_charge_sla_s,
+  t.id                                    AS ticket_id,
+  t.name                                  AS titre,
+  slm_tto.name                            AS sla_prise_en_charge,
+  slm_ttr.name                            AS sla_resolution,
+  -- Délai réel de prise en charge converti en heures
+  ROUND(t.takeintoaccount_delay_stat / 3600.0, 2)  AS delai_pec_heures,
+  -- Délai réel de résolution en heures
+  ROUND(t.close_delay_stat / 3600.0, 2)            AS duree_resolution_heures,
+  -- Date de création lisible (DATETIME natif → DATE_FORMAT direct)
+  DATE_FORMAT(t.date_creation, '%d/%m/%Y %H:%i')   AS date_creation,
+  -- Indicateur de respect du SLA TTR (date résolution réelle vs échéance SLA)
   CASE
-    WHEN t.time_to_own IS NOT NULL AND t.time_to_own > 0
-    THEN ROUND(t.time_to_own / 3600.0, 2)
-    ELSE NULL
-  END AS délai_tto_heures,
-  -- Délai de résolution réel
-  t.close_delay_stat              AS durée_résolution_s,
-  -- Indicateur de respect du SLA
-  CASE
-    WHEN t.takeintoaccount_delay_stat <= t.time_to_own
-      OR t.time_to_own IS NULL THEN 'SLA respecté'
-    ELSE 'SLA dépassé'
+    WHEN t.time_to_resolve IS NULL THEN 'Pas de SLA TTR'
+    WHEN t.solvedate IS NULL        THEN 'Non résolu'
+    WHEN t.solvedate <= t.time_to_resolve THEN 'SLA respecte'
+    ELSE 'SLA depasse'
   END AS statut_sla
 FROM glpi_tickets t
 LEFT JOIN glpi_slms slm_tto ON slm_tto.id = t.slas_id_tto
@@ -224,9 +231,9 @@ LIMIT 20;
 |---|---|---|
 | `slas_id_tto` | `glpi_slms.id` | SLA définissant le délai maximal de prise en charge (Time To Own) |
 | `slas_id_ttr` | `glpi_slms.id` | SLA définissant le délai maximal de résolution (Time To Resolve) |
-| `time_to_own` | — | Timestamp Unix de l'échéance TTO calculée |
-| `time_to_resolve` | — | Timestamp Unix de l'échéance TTR calculée |
+| `time_to_own` | — | Échéance TTO calculée (DATETIME) — deadline de prise en charge |
+| `time_to_resolve` | — | Échéance TTR calculée (DATETIME) — deadline de résolution |
 | `takeintoaccount_delay_stat` | — | Délai réel de prise en charge en secondes |
 | `close_delay_stat` | — | Délai réel de résolution en secondes |
 
-**Interprétation** : un SLA est respecté si `takeintoaccount_delay_stat <= (time_to_own - date_creation)`. GLPI calcule automatiquement ces valeurs en tenant compte du calendrier de travail défini dans `glpi_slms.calendars_id`.
+**Interprétation** : un SLA TTR est respecté si `solvedate <= time_to_resolve` (deux colonnes DATETIME). GLPI calcule automatiquement `time_to_resolve` à partir de la date de création et du calendrier de travail défini dans `glpi_slms.calendars_id`, ce qui exclut nuits et week-ends du calcul du délai.

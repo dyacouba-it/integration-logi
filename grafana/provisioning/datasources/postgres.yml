@@ -1,8 +1,15 @@
 # =============================================================================
-# Provisioning automatique de la datasource PostgreSQL (GLPI)
+# Provisioning automatique de la datasource PostgreSQL (démo TP)
+#
 # Ce fichier est lu au démarrage de Grafana.
 # Les variables ${...} sont résolues depuis les variables d'environnement
 # passées au conteneur Grafana dans docker-compose.yml.
+#
+# RÔLE DE CETTE DATASOURCE :
+# PostgreSQL est maintenu dans la stack pour satisfaire l'exigence TP.
+# Les données GLPI sont dans MariaDB → voir mysql.yml (datasource principale).
+# Cette datasource permet d'explorer PostgreSQL directement depuis Grafana
+# à titre de démonstration (exploration, requêtes libres).
 # =============================================================================
 
 apiVersion: 1
@@ -10,26 +17,18 @@ apiVersion: 1
 datasources:
   - name: GLPI-PostgreSQL
     type: postgres
-    # uid EXPLICITE — doit correspondre exactement au champ "uid" référencé
-    # dans les panels des dashboards JSON (glpi_dashboard.json).
-    # Sans uid fixe, Grafana génère un UID aléatoire à chaque démarrage,
-    # ce qui rend tous les panels "Datasource not found".
+    # uid EXPLICITE — évite la génération d'UID aléatoire à chaque redémarrage
     uid: "GLPI-PostgreSQL"
-    # Le hostname 'postgres' est le nom du service défini dans docker-compose.yml
     url: postgres:5432
     database: ${POSTGRES_DB}
     user: ${POSTGRES_USER}
-    # Le mot de passe est déclaré dans secureJsonData (chiffré en base Grafana)
     secureJsonData:
       password: ${POSTGRES_PASSWORD}
     jsonData:
-      # SSL désactivé en environnement Docker interne (réseau de confiance)
       sslmode: disable
       # Version PostgreSQL 15 = 1500 (format requis par le plugin Grafana)
       postgresVersion: 1500
-      # Activer le mode time series pour les requêtes temporelles
       timescaledb: false
-    # Datasource par défaut pour les nouveaux panels
-    isDefault: true
-    # Empêcher la suppression accidentelle via l'UI
+    # Pas la datasource par défaut — MySQL/MariaDB (GLPI) l'est
+    isDefault: false
     editable: false
