@@ -25,6 +25,11 @@ MARIADB_PORT="${MARIADB_PORT:-3306}"
 MARIADB_DATABASE="${MARIADB_DATABASE:-glpi}"
 MARIADB_USER="${MARIADB_USER:-glpi_user}"
 MARIADB_PASSWORD="${MARIADB_PASSWORD:-glpi}"
+# Mot de passe appliqué aux comptes GLPI par défaut (glpi, tech, normal, post-only)
+GLPI_ADMIN_PASSWORD="${GLPI_ADMIN_PASSWORD:-GlpiAdmin@2026!}"
+
+# Alias mysql avec options communes (SSL désactivé, charset utf8mb4)
+MYSQL="mysql --ssl=0 --default-character-set=utf8mb4 -h ${MARIADB_HOST} -P ${MARIADB_PORT} -u ${MARIADB_USER} -p${MARIADB_PASSWORD} ${MARIADB_DATABASE}"
 
 echo "============================================================"
 echo " GLPI — Démarrage du conteneur"
@@ -101,18 +106,40 @@ else
     # sur 12 mois, pour que les dashboards Grafana affichent des données
     # dès le premier démarrage.
     # -------------------------------------------------------------------
+    # -------------------------------------------------------------------
+    # Sécurité — supprimer l'installeur web après l'installation CLI
+    # install/install.php n'est plus nécessaire et expose des risques.
+    # -------------------------------------------------------------------
+    rm -f /var/www/html/install/install.php \
+      && echo "  ✓ install/install.php supprimé."
+
+    # -------------------------------------------------------------------
+    # Sécurité — changer les mots de passe des comptes GLPI par défaut
+    # Les comptes glpi/glpi, tech/tech, normal/normal, post-only/postonly
+    # sont créés par l'installeur avec des mots de passe triviaux.
+    # On les remplace par GLPI_ADMIN_PASSWORD (variable d'environnement).
+    # password_hash() en PHP génère un hash bcrypt compatible GLPI.
+    # -------------------------------------------------------------------
+    HASH=$(php -r "echo password_hash('${GLPI_ADMIN_PASSWORD}', PASSWORD_BCRYPT);")
+    ${MYSQL} -e \
+      "UPDATE glpi_users SET password='${HASH}' WHERE name IN ('glpi','tech','normal','post-only');" \
+      2>&1 \
+      && echo "  ✓ Mots de passe par défaut mis à jour (→ GLPI_ADMIN_PASSWORD)." \
+      || echo "  Avertissement : changement de mot de passe partiel."
+
+    # -------------------------------------------------------------------
+    # Données de démonstration — parc + tickets
+    # -------------------------------------------------------------------
     if [ -f /seed_tickets.sql ]; then
-        echo "  Chargement des données de démonstration (tickets)..."
-        mysql --ssl=0 -h "${MARIADB_HOST}" -P "${MARIADB_PORT}" \
-              -u "${MARIADB_USER}" -p"${MARIADB_PASSWORD}" \
-              "${MARIADB_DATABASE}" < /seed_tickets.sql 2>&1 \
-            && echo "  ✓ Données de démonstration insérées (22 tickets, 8 PC, 4 périphériques)." \
+        echo "  Chargement des données de démonstration..."
+        ${MYSQL} < /seed_tickets.sql 2>&1 \
+            && echo "  ✓ Données insérées (22 tickets, 8 PC, 4 périphériques)." \
             || echo "  Avertissement : seed partiel (données peut-être déjà présentes)."
     fi
 
     echo ""
     echo "  ✓ GLPI prêt."
-    echo "  Accès : http://localhost:8082  —  glpi / glpi"
+    echo "  Accès : http://localhost:8082  —  glpi / \${GLPI_ADMIN_PASSWORD}"
     echo ""
 fi
 

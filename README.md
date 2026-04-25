@@ -135,6 +135,10 @@ POSTGRES_DB=glpi_tp
 POSTGRES_USER=postgres_user
 POSTGRES_PASSWORD=changeme
 
+# GLPI — comptes applicatifs
+# Remplace les mots de passe triviaux (glpi/glpi, tech/tech…) au 1er démarrage
+GLPI_ADMIN_PASSWORD=changeme
+
 # Grafana
 GF_SECURITY_ADMIN_USER=admin
 GF_SECURITY_ADMIN_PASSWORD=changeme
@@ -216,7 +220,7 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 
 | Service | URL | Identifiants |
 |---------|-----|-------------|
-| **GLPI** | http://localhost:8082 | `glpi` / `glpi` |
+| **GLPI** | http://localhost:8082 | `glpi` / valeur `GLPI_ADMIN_PASSWORD` dans `.env` |
 | **Grafana** | http://localhost:3000 | `admin` / valeur `GF_SECURITY_ADMIN_PASSWORD` dans `.env` |
 | **Prometheus** | http://localhost:9090 | — (accès libre) |
 | **cAdvisor** | http://localhost:8081 | — (accès libre) |
@@ -229,8 +233,19 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 > **Langue :** GLPI démarre en **français** (`fr_FR`), configuré via l'option
 > `--default-language=fr_FR` du CLI d'installation.
 >
-> **Sécurité :** Changer le mot de passe `glpi/glpi` immédiatement après la première
-> connexion — GLPI affiche une bannière d'avertissement à cet effet.
+> **Comptes disponibles :**
+>
+> | Login | Rôle | Mot de passe |
+> |-------|------|-------------|
+> | `glpi` | Administrateur | valeur `GLPI_ADMIN_PASSWORD` dans `.env` |
+> | `tech` | Technicien support | idem |
+> | `normal` | Utilisateur standard | idem |
+> | `post-only` | Lecture seule | idem |
+>
+> **Sécurité :** Les mots de passe triviaux (`glpi/glpi`, `tech/tech`…) sont
+> remplacés automatiquement au premier démarrage par la valeur de `GLPI_ADMIN_PASSWORD`.
+> `install/install.php` est supprimé après installation. DocumentRoot pointe sur
+> `public/` (seul répertoire accessible depuis le web).
 
 <!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #3 :
      Page d'accueil GLPI après connexion (tableau de bord, menu latéral visible,
@@ -564,6 +579,22 @@ grafana:
 | `'a' \|\| col::text \|\| 'b'` | `CONCAT('a', col, 'b')` |
 
 **(b) `date_creation` est un DATETIME natif, pas un entier Unix.** L'hypothèse initiale était que GLPI stocke ses dates comme entiers Unix (comme certains vieux CMS). La commande `DESCRIBE glpi_tickets` a révélé que `date_creation` est de type `timestamp` (DATETIME natif MySQL). Cela a rendu `FROM_UNIXTIME()` et `UNIX_TIMESTAMP()` inutiles — et incorrects (ils auraient interprété un timestamp MySQL comme un nombre de secondes). Toutes les requêtes ont été corrigées pour opérer directement sur le DATETIME : `DATE(date_creation)`, `DATE_FORMAT(date_creation, '%Y-%m')`, `date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)`.
+
+---
+
+### Difficulté 9 — Avertissements de sécurité GLPI au premier démarrage
+
+GLPI 10.x affiche trois alertes de sécurité à la première connexion. Elles ont toutes été traitées automatiquement dans `entrypoint.sh` :
+
+| Alerte GLPI | Cause | Solution appliquée |
+|-------------|-------|-------------------|
+| *Changer les mots de passe par défaut* | Comptes `glpi/glpi`, `tech/tech`… créés par l'installeur avec mots de passe triviaux | `UPDATE glpi_users SET password=bcrypt(GLPI_ADMIN_PASSWORD)` exécuté dans `entrypoint.sh` |
+| *Supprimer `install/install.php`* | Ce fichier permet de réinstaller GLPI depuis le web sans authentification | `rm -f /var/www/html/install/install.php` dans `entrypoint.sh` |
+| *Configuration DocumentRoot non sécurisée* | `DocumentRoot /var/www/html` expose `config/`, `files/`, `install/` sur le web | DocumentRoot changé en `/var/www/html/public` dans le `Dockerfile` |
+
+**Remarque sur le DocumentRoot :** GLPI 10.x inclut un `public/index.php` qui bootstrappe toute l'application. Le répertoire `public/` est conçu pour être le seul point d'entrée web — les fichiers de configuration, logs et uploads restent inaccessibles depuis le navigateur.
+
+**Remarque sur l'encodage :** les données de démo insérées par `seed_tickets.sql` contenaient des accents corrompus (`rÃ©seau`, `â€"`) car le client MySQL utilisait la collation `utf8mb3` par défaut. Corrigé en ajoutant `SET NAMES 'utf8mb4';` en tête du fichier SQL et `--default-character-set=utf8mb4` dans la commande `mysql` de `entrypoint.sh`.
 
 ---
 

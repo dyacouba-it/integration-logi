@@ -119,6 +119,8 @@ services:
       MARIADB_DATABASE: ${MARIADB_DATABASE}
       MARIADB_USER: ${MARIADB_USER}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      # Mot de passe appliqué aux comptes GLPI par défaut (glpi, tech, normal, post-only)
+      GLPI_ADMIN_PASSWORD: ${GLPI_ADMIN_PASSWORD}
     ports:
       # 8080 est souvent occupé sur Windows → port 8082
       - "8082:80"

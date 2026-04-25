@@ -2,6 +2,12 @@
 -- Données de démonstration GLPI — parc informatique + tickets sur 12 mois
 -- Exécuté par entrypoint.sh après glpi:database:install (premier démarrage).
 --
+-- SET NAMES force la connexion MySQL en utf8mb4 pour préserver les accents
+-- (é, à, ê, —…). Sans cette ligne, le client peut interpréter le fichier
+-- en latin1 et corrompre tous les caractères non-ASCII.
+SET NAMES 'utf8mb4';
+
+--
 -- Statuts tickets : 1=Nouveau 2=En cours(attribué) 3=En cours(planifié)
 --                   4=En attente 5=Résolu 6=Clos
 -- Types tickets   : 1=Incident  2=Demande

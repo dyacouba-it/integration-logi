@@ -113,14 +113,16 @@ RUN curl -fsSL \
 
 # ---------------------------------------------------------------------------
 # Configuration Apache
-# DocumentRoot = /var/www/html (pas /var/www/html/public) car :
-#   - install/install.php est hors de public/ (inaccessible sinon)
-#   - Le CLI glpi:database:install crée config_db.php dans config/ (hors public/)
+# DocumentRoot = /var/www/html/public (recommandation de sécurité GLPI 10.x)
+#   - Seul le répertoire public/ est accessible depuis le web
+#   - config/, files/, install/ sont hors de portée du navigateur
+#   - L'installation se fait via CLI (entrypoint.sh), pas via install.php
+#     → pas besoin que install/ soit accessible par Apache
 # ---------------------------------------------------------------------------
 RUN echo '<VirtualHost *:80>\n\
-    DocumentRoot /var/www/html\n\
+    DocumentRoot /var/www/html/public\n\
     \n\
-    <Directory /var/www/html>\n\
+    <Directory /var/www/html/public>\n\
         Options FollowSymLinks\n\
         AllowOverride All\n\
         Require all granted\n\
