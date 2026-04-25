@@ -126,6 +126,11 @@ RUN echo '<VirtualHost *:80>\n\
         Options FollowSymLinks\n\
         AllowOverride All\n\
         Require all granted\n\
+        # Rediriger toutes les requêtes sans fichier réel vers index.php\n\
+        # GLPI 10.x gère tout le routing via public/index.php\n\
+        RewriteEngine On\n\
+        RewriteCond %{REQUEST_FILENAME} !-f\n\
+        RewriteRule ^ index.php [QSA,L]\n\
     </Directory>\n\
     \n\
     ErrorLog ${APACHE_LOG_DIR}/glpi_error.log\n\
