@@ -74,6 +74,7 @@ else
     echo "      Connexion : ${MARIADB_USER}@${MARIADB_HOST}:${MARIADB_PORT}/${MARIADB_DATABASE}"
 
     # glpi:database:install utilise mysqli (compatible MariaDB).
+    # --default-language=fr_FR : interface GLPI en français dès le premier démarrage
     # --no-interaction : pas de prompt de confirmation
     # Sans --force : échoue proprement si les tables existent déjà
     php /var/www/html/bin/console glpi:database:install \
@@ -82,20 +83,14 @@ else
         --db-name="${MARIADB_DATABASE}" \
         --db-user="${MARIADB_USER}" \
         --db-password="${MARIADB_PASSWORD}" \
+        --default-language=fr_FR \
         --no-interaction \
         2>&1
 
-    # Corriger à nouveau les permissions après l'install :
-    # le CLI tourne en root et crée tous ses fichiers (config_db.php, php-errors.log…)
-    # avec owner root → Apache (www-data) ne peut pas les lire/écrire.
-    # find -not -user évite de toucher les fichiers déjà correctement propriété de www-data.
-    find /var/www/html/files/ /var/www/html/config/ \
-        -not -user www-data \
-        -exec chown www-data:www-data {} \; 2>/dev/null || true
-
-    # Corriger à nouveau les permissions après l'install :
-    # le CLI tourne en root et crée tous ses fichiers (config_db.php, php-errors.log…)
-    # avec owner root → Apache (www-data) ne peut pas les lire/écrire.
+    # Corriger les permissions après l'install :
+    # le CLI tourne en root et crée config_db.php, php-errors.log… avec owner root.
+    # Apache (www-data) ne peut pas lire/écrire ces fichiers sans cette correction.
+    # find -not -user évite de toucher les fichiers déjà propriété de www-data.
     find /var/www/html/files/ /var/www/html/config/ \
         -not -user www-data \
         -exec chown www-data:www-data {} \; 2>/dev/null || true

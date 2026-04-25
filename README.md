@@ -160,7 +160,9 @@ docker compose up -d
    ```bash
    php bin/console glpi:database:install \
        --db-host=mariadb --db-name=glpi \
-       --db-user=glpi_user --no-interaction
+       --db-user=glpi_user \
+       --default-language=fr_FR \
+       --no-interaction
    ```
 5. Les permissions des fichiers créés par le CLI (root) sont corrigées pour `www-data`
 6. `glpi/seed_tickets.sql` est chargé automatiquement — **données de démo pré-insérées** :
@@ -219,10 +221,13 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 | **Prometheus** | http://localhost:9090 | — (accès libre) |
 | **cAdvisor** | http://localhost:8081 | — (accès libre) |
 
-> **GLPI — données initiales :** Une installation fraîche ne contient aucun ticket ni
-> équipement. GLPI crée uniquement les comptes par défaut (`glpi`, `tech`, `normal`,
-> `post-only`) et la configuration système. Pour alimenter les dashboards Grafana,
-> créer quelques tickets de test dans GLPI (*Assistance → Créer un ticket*).
+> **GLPI — données pré-chargées :** `glpi/seed_tickets.sql` est exécuté automatiquement
+> au premier démarrage. Les dashboards Grafana affichent des données réelles dès la
+> connexion — aucune saisie manuelle nécessaire. Voir le tableau récapitulatif en
+> [section 3](#3-installation-et-démarrage) pour le détail des objets insérés.
+>
+> **Langue :** GLPI démarre en **français** (`fr_FR`), configuré via l'option
+> `--default-language=fr_FR` du CLI d'installation.
 >
 > **Sécurité :** Changer le mot de passe `glpi/glpi` immédiatement après la première
 > connexion — GLPI affiche une bannière d'avertissement à cet effet.
@@ -575,7 +580,9 @@ tp-integration/
 │
 ├── glpi/
 │   ├── Dockerfile                  ← Image PHP 8.2 + Apache + GLPI 10.0.16 + extensions
-│   └── entrypoint.sh               ← Installation automatique via CLI au 1er démarrage
+│   ├── entrypoint.sh               ← Installation automatique via CLI au 1er démarrage
+│   └── seed_tickets.sql            ← Données de démo : 5 catégories, 22 tickets, 8 PC,
+│                                      4 périphériques, 41 liaisons tickets↔utilisateurs
 │
 ├── prometheus/
 │   └── prometheus.yml              ← Scrape configs : prometheus, cadvisor, glpi
