@@ -272,7 +272,7 @@
         {
           "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "time_series",
-          "rawSql": "-- date_creation est TIMESTAMP : DATE() l'extrait directement, sans conversion\nSELECT\n  DATE(date_creation) AS time,\n  COUNT(*) AS \"Tickets crees\"\nFROM glpi_tickets\nWHERE date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)\n  AND is_deleted = 0\nGROUP BY DATE(date_creation)\nORDER BY time;",
+          "rawSql": "-- UNIX_TIMESTAMP() convertit une DATE vers un entier Unix (secondes depuis epoch)\n-- requis par Grafana timeseries avec datasource MySQL\nSELECT\n  UNIX_TIMESTAMP(DATE(date_creation)) AS time,\n  COUNT(*) AS \"Tickets crees\"\nFROM glpi_tickets\nWHERE date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)\n  AND is_deleted = 0\nGROUP BY DATE(date_creation)\nORDER BY time;",
           "refId": "A"
         }
       ]
@@ -493,7 +493,7 @@
         {
           "datasource": { "type": "mysql", "uid": "GLPI-MySQL" },
           "format": "time_series",
-          "rawSql": "-- DATE_FORMAT sur TIMESTAMP natif — pas besoin de FROM_UNIXTIME\nSELECT\n  DATE_FORMAT(date_creation, '%Y-%m-01') AS time,\n  COUNT(*) AS \"Tickets par mois\"\nFROM glpi_tickets\nWHERE date_creation >= DATE_SUB(NOW(), INTERVAL 12 MONTH)\n  AND is_deleted = 0\nGROUP BY DATE_FORMAT(date_creation, '%Y-%m-01')\nORDER BY time;",
+          "rawSql": "-- UNIX_TIMESTAMP() convertit la date tronquée au mois vers un entier Unix\n-- nécessaire pour l'axe temporel de Grafana timeseries (MySQL datasource)\nSELECT\n  UNIX_TIMESTAMP(DATE_FORMAT(date_creation, '%Y-%m-01')) AS time,\n  COUNT(*) AS \"Tickets par mois\"\nFROM glpi_tickets\nWHERE date_creation >= DATE_SUB(NOW(), INTERVAL 12 MONTH)\n  AND is_deleted = 0\nGROUP BY DATE_FORMAT(date_creation, '%Y-%m-01')\nORDER BY time;",
           "refId": "A"
         }
       ]
