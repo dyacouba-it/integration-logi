@@ -111,7 +111,7 @@ else
         mysql --ssl=0 -h "${MARIADB_HOST}" -P "${MARIADB_PORT}" \
               -u "${MARIADB_USER}" -p"${MARIADB_PASSWORD}" \
               "${MARIADB_DATABASE}" < /seed_tickets.sql 2>&1 \
-            && echo "  ✓ 22 tickets de démonstration insérés." \
+            && echo "  ✓ Données de démonstration insérées (22 tickets, 8 PC, 4 périphériques)." \
             || echo "  Avertissement : seed partiel (données peut-être déjà présentes)."
     fi
 

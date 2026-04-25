@@ -163,7 +163,13 @@ docker compose up -d
        --db-user=glpi_user --no-interaction
    ```
 5. Les permissions des fichiers créés par le CLI (root) sont corrigées pour `www-data`
-6. Apache démarre — GLPI est accessible sur http://localhost:8082
+6. `glpi/seed_tickets.sql` est chargé automatiquement — **données de démo pré-insérées** :
+   - 5 catégories ITIL (Réseau, Matériel, Logiciel, Sécurité, Accès et droits)
+   - 22 tickets répartis sur 12 mois (statuts 1→6, types incident/demande)
+   - 8 ordinateurs du parc affectés à 3 utilisateurs
+   - 4 périphériques (imprimante, scanner, écran, docking station)
+   - 41 liaisons tickets↔utilisateurs (demandeurs + techniciens assignés)
+7. Apache démarre — GLPI est accessible sur http://localhost:8082 (login : `glpi` / `glpi`)
 
 Les redémarrages suivants sont quasi-instantanés : `config_db.php` est présent dans le volume `glpi_config`, l'étape d'installation est ignorée.
 

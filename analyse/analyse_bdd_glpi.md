@@ -113,6 +113,10 @@ ORDER BY mois;
 
 ## Q4 — Équipements associés à un utilisateur
 
+> **Données de démo disponibles** : 8 ordinateurs et 4 périphériques sont pré-insérés par
+> `seed_tickets.sql`. Remplacer `'nom_utilisateur'` par `'normal'` pour obtenir 4 postes,
+> `'tech'` pour 2 postes, `'glpi'` pour 1 poste.
+
 ```sql
 -- Retrouver tous les ordinateurs et périphériques associés à un utilisateur donné
 -- La relation se fait via glpi_computers.users_id (utilisateur principal)
@@ -133,7 +137,7 @@ JOIN glpi_computers c ON c.users_id = u.id
 LEFT JOIN glpi_operatingsystems os ON os.id = c.operatingsystems_id
 LEFT JOIN glpi_entities e ON e.id = c.entities_id
 WHERE
-  u.name = 'nom_utilisateur'  -- remplacer par le login recherché
+  u.name = 'normal'  -- utilisateur de démo ; remplacer par le login recherché
   AND c.is_deleted = 0
 ORDER BY c.name;
 

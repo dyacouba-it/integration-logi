@@ -1,11 +1,16 @@
 -- =============================================================================
--- Données de démonstration GLPI — 22 tickets répartis sur 12 mois
+-- Données de démonstration GLPI — parc informatique + tickets sur 12 mois
 -- Exécuté par entrypoint.sh après glpi:database:install (premier démarrage).
 --
--- Statuts : 1=Nouveau 2=En cours(attribué) 3=En cours(planifié) 4=En attente
---           5=Résolu  6=Clos
--- Types   : 1=Incident  2=Demande
--- Priorité: 1=Très haute 2=Haute 3=Moyenne 4=Basse 5=Très basse
+-- Statuts tickets : 1=Nouveau 2=En cours(attribué) 3=En cours(planifié)
+--                   4=En attente 5=Résolu 6=Clos
+-- Types tickets   : 1=Incident  2=Demande
+-- Priorité        : 1=Très haute 2=Haute 3=Moyenne 4=Basse 5=Très basse
+--
+-- Utilisateurs GLPI (créés par l'installeur) :
+--   id=2  glpi      → administrateur
+--   id=4  tech      → technicien support
+--   id=5  normal    → utilisateur standard
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -237,3 +242,69 @@ VALUES (0, 'Renouvellement parc PC direction (8 postes)',
   NOW() - INTERVAL 305 DAY, NOW() - INTERVAL 285 DAY, NOW() - INTERVAL 305 DAY,
   2, 1, 'Postes livrés, configurés, données migrées. Anciens postes recyclés.',
   3, 3, 3, 6, 2, @mat, 0, 1, 1728000);
+
+-- =============================================================================
+-- PARC INFORMATIQUE — Ordinateurs (glpi_computers)
+-- users_id      : utilisateur propriétaire du poste
+-- users_id_tech : technicien responsable du poste (id=4 = tech)
+-- states_id=0   : état non défini (pas de liste de valeurs imposée en seed)
+-- =============================================================================
+
+INSERT INTO glpi_computers
+  (entities_id, name, serial, users_id, users_id_tech,
+   is_deleted, is_template, is_dynamic, is_recursive,
+   date_creation, date_mod)
+VALUES
+  -- Portables utilisateurs (user 5 = normal)
+  (0, 'PC-DG01', 'SN-DELL-001-2024', 5, 4, 0, 0, 0, 0, NOW() - INTERVAL 280 DAY, NOW()),
+  (0, 'PC-DG02', 'SN-DELL-002-2024', 5, 4, 0, 0, 0, 0, NOW() - INTERVAL 275 DAY, NOW()),
+  (0, 'PC-DG04', 'SN-LNVO-001-2024', 5, 4, 0, 0, 0, 0, NOW() - INTERVAL 260 DAY, NOW()),
+  -- PC-DG07 : poste mentionné dans le ticket 8 "Écran noir après mise à jour BIOS"
+  (0, 'PC-DG07', 'SN-HP-003-2023',   5, 4, 0, 0, 0, 0, NOW() - INTERVAL 420 DAY, NOW()),
+  -- Postes technicien (user 4 = tech)
+  (0, 'PC-DG03', 'SN-HP-001-2024',   4, 4, 0, 0, 0, 0, NOW() - INTERVAL 270 DAY, NOW()),
+  (0, 'PC-DG06', 'SN-DELL-003-2022', 4, 4, 0, 0, 0, 0, NOW() - INTERVAL 500 DAY, NOW()),
+  -- Poste administrateur (user 2 = glpi)
+  (0, 'PC-DG05', 'SN-HP-002-2024',   2, 4, 0, 0, 0, 0, NOW() - INTERVAL 265 DAY, NOW()),
+  -- Serveur dans l'inventaire (pas d'utilisateur = users_id 0)
+  (0, 'SRV-APP01', 'SN-DELL-SRV-2022', 0, 4, 0, 0, 0, 0, NOW() - INTERVAL 700 DAY, NOW());
+
+-- =============================================================================
+-- PARC INFORMATIQUE — Périphériques (glpi_peripherals)
+-- is_global=0 : périphérique affecté à un poste ou utilisateur précis
+-- =============================================================================
+
+INSERT INTO glpi_peripherals
+  (entities_id, name, serial, brand, users_id, users_id_tech,
+   is_deleted, is_template, is_dynamic, is_global, is_recursive,
+   date_creation, date_mod)
+VALUES
+  (0, 'IMP-HP-001',   'SN-IMP-HP-001',  'HP',      5, 4, 0, 0, 0, 0, 0, NOW() - INTERVAL 400 DAY, NOW()),
+  (0, 'SCAN-FUJ-001', 'SN-SCAN-FUJ-01', 'Fujitsu', 2, 4, 0, 0, 0, 0, 0, NOW() - INTERVAL 600 DAY, NOW()),
+  (0, 'ECRAN-001',    'SN-DELL-SCR-01', 'Dell',    5, 4, 0, 0, 0, 0, 0, NOW() - INTERVAL 280 DAY, NOW()),
+  (0, 'DOCK-HP-001',  'SN-DOCK-HP-001', 'HP',      4, 4, 0, 0, 0, 0, 0, NOW() - INTERVAL 270 DAY, NOW());
+
+-- =============================================================================
+-- LIAISONS TICKETS ↔ UTILISATEURS (glpi_tickets_users)
+--   type 1 = demandeur   → utilisateur qui a ouvert le ticket
+--   type 2 = technicien  → assigné pour traitement
+--   use_notification=1   → recevoir les mails de suivi
+--
+-- Stratégie :
+--   Tous les tickets ont user 5 (normal) comme demandeur.
+--   Les tickets non-Nouveau (status != 1) ont user 4 (tech) comme technicien.
+--   On utilise SELECT FROM glpi_tickets pour ne pas dépendre d'IDs codés en dur.
+-- =============================================================================
+
+-- Demandeur (type=1) : user 5 (normal) pour tous les tickets
+INSERT INTO glpi_tickets_users (tickets_id, users_id, type, use_notification)
+SELECT id, 5, 1, 1
+FROM glpi_tickets
+WHERE is_deleted = 0;
+
+-- Technicien assigné (type=2) : user 4 (tech) pour tous les tickets non-Nouveau
+INSERT INTO glpi_tickets_users (tickets_id, users_id, type, use_notification)
+SELECT id, 4, 2, 1
+FROM glpi_tickets
+WHERE is_deleted = 0
+  AND status != 1;  -- 1=Nouveau : pas encore attribué
