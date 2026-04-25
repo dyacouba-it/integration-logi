@@ -2,7 +2,7 @@
 
 **Module :** Intégration Logicielle — M2 ISIE IBAM  
 **Enseignant :** Charles BATIONO  
-**Auteurs :** [Prénom NOM] — [Prénom NOM]
+**Auteurs :** [DA Sansan Nils] — [DAO Yacouba] - [KABORE Vincent] - [SANON Cherifa Sya Sandra]
 
 > **Démarrage en une commande :**
 > ```bash
@@ -111,7 +111,7 @@ Ce projet déploie une **infrastructure ITSM complète** en environnement conten
 ### Étape 1 — Récupérer le projet
 
 ```bash
-git clone <url-du-depot>
+git clone https://github.com/dyacouba-it/integration-logi
 cd integration-logi
 ```
 
