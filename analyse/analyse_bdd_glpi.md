@@ -27,6 +27,7 @@ WHERE table_schema = DATABASE()  -- la base courante (glpi)
 ORDER BY (data_length + index_length) DESC
 LIMIT 20;
 ```
+![1](../images/Q1.png)
 
 ### Description des 10 tables clés
 
@@ -75,6 +76,7 @@ WHERE is_deleted = 0  -- exclure les tickets supprimés (corbeille)
 GROUP BY status
 ORDER BY status;
 ```
+![2](../images/Q2.png)
 
 **Signification des statuts GLPI :**
 - **1 — Nouveau** : Ticket créé, non encore attribué à un technicien
@@ -108,6 +110,7 @@ WHERE
 GROUP BY DATE_FORMAT(date_creation, '%Y-%m')
 ORDER BY mois;
 ```
+![3](../images/Q3.png)
 
 ---
 
@@ -122,7 +125,6 @@ ORDER BY mois;
 -- La relation se fait via glpi_computers.users_id (utilisateur principal)
 -- ou via glpi_items_users pour les associations multiples
 
--- Méthode 1 : via le champ users_id direct (utilisateur principal)
 SELECT
   u.name          AS login_utilisateur,
   u.firstname     AS prenom,
@@ -140,25 +142,8 @@ WHERE
   u.name = 'normal'  -- utilisateur de démo ; remplacer par le login recherché
   AND c.is_deleted = 0
 ORDER BY c.name;
-
--- Méthode 2 : via la table de liaison glpi_items_users (associations multiples)
-SELECT
-  u.name                              AS login,
-  CONCAT(u.firstname, ' ', u.realname) AS nom_complet,
-  gi.itemtype                          AS type_equipement,
-  -- Résolution dynamique du nom selon le type d'item
-  CASE gi.itemtype
-    WHEN 'Computer'   THEN (SELECT name FROM glpi_computers WHERE id = gi.items_id)
-    WHEN 'Peripheral' THEN (SELECT name FROM glpi_peripherals WHERE id = gi.items_id)
-    WHEN 'Phone'      THEN (SELECT name FROM glpi_phones WHERE id = gi.items_id)
-    WHEN 'Printer'    THEN (SELECT name FROM glpi_printers WHERE id = gi.items_id)
-  END AS nom_equipement,
-  gi.type         AS type_association  -- 1=Utilisateur principal, 4=Contact
-FROM glpi_users u
-JOIN glpi_items_users gi ON gi.users_id = u.id
-WHERE u.name = 'nom_utilisateur'
-ORDER BY gi.itemtype, nom_equipement;
 ```
+![4](../images/Q4.png)
 
 ---
 
@@ -173,7 +158,10 @@ FROM information_schema.columns
 WHERE table_schema = DATABASE()
   AND table_name = 'glpi_slms'
 ORDER BY ordinal_position;
+```
+![5-1](../images/Q5-1.png)
 
+```sql
 -- Explorer les niveaux SLA (escalades)
 SELECT column_name, data_type
 FROM information_schema.columns
@@ -181,6 +169,7 @@ WHERE table_schema = DATABASE()
   AND table_name = 'glpi_slalevels'
 ORDER BY ordinal_position;
 ```
+![5-2](../images/Q5-2.png)
 
 ### Architecture SLA dans GLPI
 
@@ -228,6 +217,7 @@ WHERE t.is_deleted = 0
 ORDER BY t.date_creation DESC
 LIMIT 20;
 ```
+![SLA](../images/SLA.png)
 
 ### Explication de la relation glpi_tickets ↔ glpi_slms
 

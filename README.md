@@ -112,7 +112,7 @@ Ce projet déploie une **infrastructure ITSM complète** en environnement conten
 
 ```bash
 git clone <url-du-depot>
-cd tp-integration
+cd integration-logi
 ```
 
 ### Étape 2 — Configurer les variables d'environnement
@@ -121,30 +121,32 @@ cd tp-integration
 cp .env.example .env
 ```
 
-Le fichier `.env` contient les mots de passe de toutes les bases et services. Les valeurs par défaut fonctionnent en développement local. En production, **remplacer chaque `changeme`** par un mot de passe fort.
-
 ```ini
-# MariaDB — base de données de GLPI
+# --- MariaDB — Base de données principale de GLPI ----------------------------
 MARIADB_DATABASE=glpi
 MARIADB_USER=glpi_user
-MARIADB_PASSWORD=changeme
-MARIADB_ROOT_PASSWORD=changeme_root
+MARIADB_PASSWORD=Gl4p!S3cur3#2026
+MARIADB_ROOT_PASSWORD=R00t!M4r14DB#2026
 
-# PostgreSQL — base auxiliaire (TP)
+# --- PostgreSQL — Maintenu dans la stack pour l'exigence TP ------------------
+# (non utilisé par GLPI — voir README section "Difficultés" pour l'explication)
 POSTGRES_DB=glpi_tp
 POSTGRES_USER=postgres_user
-POSTGRES_PASSWORD=changeme
+POSTGRES_PASSWORD=Pg!TP2026#Sec
 
-# GLPI — comptes applicatifs
-# Remplace les mots de passe triviaux (glpi/glpi, tech/tech…) au 1er démarrage
-GLPI_ADMIN_PASSWORD=changeme
+# --- GLPI — Comptes applicatifs -----------------------------------------------
+GLPI_ADMIN_PASSWORD=Gl4p!Adm1n#2026
 
-# Grafana
+# --- Grafana ------------------------------------------------------------------
 GF_SECURITY_ADMIN_USER=admin
-GF_SECURITY_ADMIN_PASSWORD=changeme
+GF_SECURITY_ADMIN_PASSWORD=Gr4f@n4#2026
 
-# Prometheus — durée de rétention des métriques
+# --- Prometheus ---------------------------------------------------------------
+# Durée de rétention des métriques (ex: 15d, 30d, 1y)
 PROMETHEUS_RETENTION=15d
+
+
+
 ```
 
 > ⚠ Le fichier `.env` est exclu du dépôt Git par `.gitignore`. Ne jamais le committer.
@@ -179,13 +181,8 @@ docker compose up -d
 
 Les redémarrages suivants sont quasi-instantanés : `config_db.php` est présent dans le volume `glpi_config`, l'étape d'installation est ignorée.
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #1 :
-     Terminal affichant "docker compose logs glpi" avec les trois étapes visibles :
-       [1/3] MariaDB est joignable.
-       [2/3] Installation done.
-       [3/3] Démarrage d'Apache...
-     Prouve que l'installation automatique fonctionne sans intervention manuelle.
--->
+![Capture1](images/cap1.png)
+
 
 ### Étape 4 — Vérifier l'état des services
 
@@ -209,10 +206,7 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 - MariaDB : `healthcheck.sh --connect --innodb_initialized`
 - PostgreSQL : `pg_isready -U postgres_user -d glpi_tp`
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #2 :
-     Résultat de "docker compose ps" dans le terminal,
-     tous les services affichant "Up" ou "healthy".
--->
+![Capture2](images/cap2.png)
 
 ---
 
@@ -247,16 +241,10 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 > `install/install.php` est supprimé après installation. DocumentRoot pointe sur
 > `public/` (seul répertoire accessible depuis le web).
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #3 :
-     Page d'accueil GLPI après connexion (tableau de bord, menu latéral visible,
-     statistiques affichées). Montre que l'application est pleinement fonctionnelle.
--->
+![Capture3](images/Cap3.png)
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #4 :
-     Administration > Informations système dans GLPI.
-     Affiche : version GLPI 10.0.16, PHP 8.2.x, MariaDB 10.11, extensions actives.
-     Confirme visuellement la configuration technique déployée.
--->
+
+![Capture4](images/Cap4.png)
 
 ---
 
@@ -301,6 +289,11 @@ Dashboard par défaut, accessible sur http://localhost:3000. Il interroge MariaD
      (dézoomer si nécessaire). Créer au préalable quelques tickets dans GLPI pour que
      les compteurs et graphiques affichent des valeurs non nulles.
 -->
+![Capture5](images/cap5.png)
+
+![Capture5-2](images/cap5-2.png)
+
+![Capture5-3](images/cap5-3.png)
 
 ### Dashboard 2 — Monitoring Infrastructure
 
@@ -313,10 +306,9 @@ Interroge Prometheus (métriques collectées par cAdvisor depuis les cgroups Doc
 | Réseau entrant | `rate(container_network_receive_bytes_total{name!=""}[5m])` |
 | Réseau sortant | `rate(container_network_transmit_bytes_total{name!=""}[5m])` |
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #6 :
-     Dashboard "Monitoring Infrastructure" avec les courbes CPU et mémoire
-     des six conteneurs en temps réel. Montre l'intégration cAdvisor → Prometheus → Grafana.
--->
+![Capture6](images/cap6.png)
+
+![Capture6-2](images/cap6-2.png)
 
 ---
 
@@ -334,10 +326,7 @@ Accéder à http://localhost:9090/targets pour visualiser l'état des cibles de 
 
 La cible `glpi` est configurée intentionnellement bien qu'elle soit DOWN. Cela démontre la gestion multi-cibles dans Prometheus et la distinction entre une cible inaccessible et une erreur de configuration.
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #7 :
-     Page http://localhost:9090/targets affichant les trois jobs :
-     "prometheus" UP (vert), "cadvisor" UP (vert), "glpi" DOWN (rouge).
--->
+![Capture7](images/cap7.png)
 
 ### Différence entre `scrape_interval` et `evaluation_interval`
 
@@ -364,11 +353,7 @@ rate(container_cpu_usage_seconds_total{name!=""}[5m])
 
 Une valeur de `0.05` signifie que le conteneur consomme 5 % d'un cœur. Multiplier par 100 donne le pourcentage d'utilisation CPU affiché dans le dashboard.
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #8 :
-     Onglet Graph de Prometheus (http://localhost:9090/graph) avec la requête
-     rate(container_cpu_usage_seconds_total{name!=""}[5m]) * 100
-     et les courbes de chaque conteneur affichées.
--->
+![Capture8](images/cap8.png)
 
 ---
 
@@ -405,6 +390,7 @@ LIMIT 15;
      Les tables glpi_tickets, glpi_computers, glpi_users, etc. doivent apparaître.
      Prouve que la base GLPI est correctement initialisée.
 -->
+![Capture9](images/cap9.png)
 
 ---
 
@@ -580,21 +566,6 @@ grafana:
 
 **(b) `date_creation` est un DATETIME natif, pas un entier Unix.** L'hypothèse initiale était que GLPI stocke ses dates comme entiers Unix (comme certains vieux CMS). La commande `DESCRIBE glpi_tickets` a révélé que `date_creation` est de type `timestamp` (DATETIME natif MySQL). Cela a rendu `FROM_UNIXTIME()` et `UNIX_TIMESTAMP()` inutiles — et incorrects (ils auraient interprété un timestamp MySQL comme un nombre de secondes). Toutes les requêtes ont été corrigées pour opérer directement sur le DATETIME : `DATE(date_creation)`, `DATE_FORMAT(date_creation, '%Y-%m')`, `date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)`.
 
----
-
-### Difficulté 9 — Avertissements de sécurité GLPI au premier démarrage
-
-GLPI 10.x affiche trois alertes de sécurité à la première connexion. Elles ont toutes été traitées automatiquement dans `entrypoint.sh` :
-
-| Alerte GLPI | Cause | Solution appliquée |
-|-------------|-------|-------------------|
-| *Changer les mots de passe par défaut* | Comptes `glpi/glpi`, `tech/tech`… créés par l'installeur avec mots de passe triviaux | `UPDATE glpi_users SET password=bcrypt(GLPI_ADMIN_PASSWORD)` exécuté dans `entrypoint.sh` |
-| *Supprimer `install/install.php`* | Ce fichier permet de réinstaller GLPI depuis le web sans authentification | `rm -f /var/www/html/install/install.php` dans `entrypoint.sh` |
-| *Configuration DocumentRoot non sécurisée* | `DocumentRoot /var/www/html` expose `config/`, `files/`, `install/` sur le web | DocumentRoot changé en `/var/www/html/public` dans le `Dockerfile` |
-
-**Remarque sur le DocumentRoot :** GLPI 10.x inclut un `public/index.php` qui bootstrappe toute l'application. Le répertoire `public/` est conçu pour être le seul point d'entrée web — les fichiers de configuration, logs et uploads restent inaccessibles depuis le navigateur.
-
-**Remarque sur l'encodage :** les données de démo insérées par `seed_tickets.sql` contenaient des accents corrompus (`rÃ©seau`, `â€"`) car le client MySQL utilisait la collation `utf8mb3` par défaut. Corrigé en ajoutant `SET NAMES 'utf8mb4';` en tête du fichier SQL et `--default-character-set=utf8mb4` dans la commande `mysql` de `entrypoint.sh`.
 
 ---
 
