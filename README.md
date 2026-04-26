@@ -181,6 +181,8 @@ docker compose up -d
 
 Les redémarrages suivants sont quasi-instantanés : `config_db.php` est présent dans le volume `glpi_config`, l'étape d'installation est ignorée.
 
+---
+
 ![Capture1](images/cap1.png)
 
 
@@ -206,9 +208,10 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 - MariaDB : `healthcheck.sh --connect --innodb_initialized`
 - PostgreSQL : `pg_isready -U postgres_user -d glpi_tp`
 
+---
+
 ![Capture2](images/cap2.png)
 
----
 
 ## 4. Accès aux interfaces
 
@@ -240,13 +243,14 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 > remplacés automatiquement au premier démarrage par la valeur de `GLPI_ADMIN_PASSWORD`.
 > `install/install.php` est supprimé après installation. DocumentRoot pointe sur
 > `public/` (seul répertoire accessible depuis le web).
+---
 
 ![Capture3](images/Cap3.png)
 
 
 ![Capture4](images/Cap4.png)
 
----
+
 
 ## 5. Tableaux de bord Grafana
 
@@ -304,14 +308,13 @@ Interroge Prometheus (métriques collectées par cAdvisor depuis les cgroups Doc
 | Mémoire par conteneur (Mo) | `container_memory_usage_bytes{name!=""} / 1024 / 1024` |
 | Réseau entrant | `rate(container_network_receive_bytes_total{name!=""}[5m])` |
 | Réseau sortant | `rate(container_network_transmit_bytes_total{name!=""}[5m])` |
-
+---
 
 ![Capture6](images/cap6.png)
 
 
 ![Capture6-2](images/cap6-2.png)
 
----
 
 ## 6. Prometheus et PromQL
 
@@ -326,7 +329,7 @@ Accéder à http://localhost:9090/targets pour visualiser l'état des cibles de 
 | `glpi` | `glpi:80` | **DOWN** | GLPI n'expose pas `/metrics` nativement |
 
 La cible `glpi` est configurée intentionnellement bien qu'elle soit DOWN. Cela démontre la gestion multi-cibles dans Prometheus et la distinction entre une cible inaccessible et une erreur de configuration.
-
+---
 
 ![Capture7](images/cap7.png)
 
@@ -355,12 +358,11 @@ rate(container_cpu_usage_seconds_total{name!=""}[5m])
 | `rate(...)` | Taux d'augmentation par seconde — `1.0` équivaut à 100 % d'un cœur |
 
 Une valeur de `0.05` signifie que le conteneur consomme 5 % d'un cœur. Multiplier par 100 donne le pourcentage d'utilisation CPU affiché dans le dashboard.
-
+---
 
 ![Capture8](images/cap8.png)
 
 
----
 
 ## 7. Analyse de la base GLPI
 
@@ -389,12 +391,11 @@ WHERE table_schema = DATABASE()
 ORDER BY (data_length + index_length) DESC
 LIMIT 15;
 ```
-
+---
 
 ![Capture9](images/cap9.png)
 
 
----
 
 ## 8. Arrêt et nettoyage
 
