@@ -268,7 +268,7 @@ Les UIDs sont déclarés explicitement dans les fichiers YAML de provisioning. S
 
 ### Dashboard 1 — GLPI Gestion du parc informatique
 
-Dashboard par défaut, accessible sur http://localhost:3000. Il interroge MariaDB/MySQL pour afficher les données GLPI en temps réel (rafraîchissement toutes les 30 s).
+Dashboard par défaut, accessible sur http://localhost:8081. Il interroge MariaDB/MySQL pour afficher les données GLPI en temps réel (rafraîchissement toutes les 30 s).
 
 | Panel | Type de visualisation | Logique de la requête |
 |-------|-----------------------|----------------------|
@@ -611,4 +611,4 @@ integration-logi/
 ---
 
 *Projet réalisé dans le cadre du module Intégration Logicielle — M2 ISIE IBAM.*  
-*Stack testée sur Windows 11 (Docker Desktop 4.x + WSL2) et Ubuntu 22.04.*
+*Stack testée sur Windows 11 (Docker Desktop 4 + WSL2) et Ubuntu 22.04.*
