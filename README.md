@@ -284,16 +284,15 @@ Dashboard par défaut, accessible sur http://localhost:3000. Il interroge MariaD
 > `DATE_FORMAT()` et `DATE_SUB()` s'appliquent directement, sans `FROM_UNIXTIME()`.
 > Voir [section 9](#9-difficultés-rencontrées-et-solutions) pour le détail de cette découverte.
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #5 :
-     Dashboard Grafana "GLPI — Gestion du parc informatique" avec les 10 panels visibles
-     (dézoomer si nécessaire). Créer au préalable quelques tickets dans GLPI pour que
-     les compteurs et graphiques affichent des valeurs non nulles.
--->
-![Capture5](images/cap5.png)
 
-![Capture5-2](images/cap5-2.png)
+![Capture5](images/Cap5.png)
 
-![Capture5-3](images/cap5-3.png)
+
+![Capture5-2](images/Cap5-2.png)
+
+
+![Capture5-3](images/Cap5-3.png)
+
 
 ### Dashboard 2 — Monitoring Infrastructure
 
@@ -306,7 +305,9 @@ Interroge Prometheus (métriques collectées par cAdvisor depuis les cgroups Doc
 | Réseau entrant | `rate(container_network_receive_bytes_total{name!=""}[5m])` |
 | Réseau sortant | `rate(container_network_transmit_bytes_total{name!=""}[5m])` |
 
+
 ![Capture6](images/cap6.png)
+
 
 ![Capture6-2](images/cap6-2.png)
 
@@ -326,7 +327,9 @@ Accéder à http://localhost:9090/targets pour visualiser l'état des cibles de 
 
 La cible `glpi` est configurée intentionnellement bien qu'elle soit DOWN. Cela démontre la gestion multi-cibles dans Prometheus et la distinction entre une cible inaccessible et une erreur de configuration.
 
+
 ![Capture7](images/cap7.png)
+
 
 ### Différence entre `scrape_interval` et `evaluation_interval`
 
@@ -353,7 +356,9 @@ rate(container_cpu_usage_seconds_total{name!=""}[5m])
 
 Une valeur de `0.05` signifie que le conteneur consomme 5 % d'un cœur. Multiplier par 100 donne le pourcentage d'utilisation CPU affiché dans le dashboard.
 
+
 ![Capture8](images/cap8.png)
+
 
 ---
 
@@ -385,12 +390,9 @@ ORDER BY (data_length + index_length) DESC
 LIMIT 15;
 ```
 
-<!-- 📸 CAPTURE D'ÉCRAN SUGGÉRÉE #9 :
-     Terminal affichant le résultat de la requête ci-dessus dans le shell MariaDB.
-     Les tables glpi_tickets, glpi_computers, glpi_users, etc. doivent apparaître.
-     Prouve que la base GLPI est correctement initialisée.
--->
+
 ![Capture9](images/cap9.png)
+
 
 ---
 
@@ -572,7 +574,7 @@ grafana:
 ## 10. Structure du projet
 
 ```
-tp-integration/
+integration-logi/
 │
 ├── docker-compose.yml              ← Orchestration des 6 services
 ├── .env                            ← Secrets (exclu du dépôt Git)
