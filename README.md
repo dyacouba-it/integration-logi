@@ -183,7 +183,7 @@ Les redémarrages suivants sont quasi-instantanés : `config_db.php` est présen
 
 ---
 
-![Capture1](images/cap1.png)
+![Capture1](images/Cap1.png)
 
 
 ### Étape 4 — Vérifier l'état des services
@@ -210,7 +210,7 @@ MariaDB et PostgreSQL affichent `healthy` grâce à leurs healthchecks respectif
 
 ---
 
-![Capture2](images/cap2.png)
+![Capture2](images/Cap2.png)
 
 
 ## 4. Accès aux interfaces
@@ -310,10 +310,10 @@ Interroge Prometheus (métriques collectées par cAdvisor depuis les cgroups Doc
 | Réseau sortant | `rate(container_network_transmit_bytes_total{name!=""}[5m])` |
 ---
 
-![Capture6](images/cap6.png)
+![Capture6](images/Cap6.png)
 
 
-![Capture6-2](images/cap6-2.png)
+![Capture6-2](images/Cap6-2.png)
 
 
 ## 6. Prometheus et PromQL
@@ -331,7 +331,7 @@ Accéder à http://localhost:9090/targets pour visualiser l'état des cibles de 
 La cible `glpi` est configurée intentionnellement bien qu'elle soit DOWN. Cela démontre la gestion multi-cibles dans Prometheus et la distinction entre une cible inaccessible et une erreur de configuration.
 ---
 
-![Capture7](images/cap7.png)
+![Capture7](images/Cap7.png)
 
 
 ### Différence entre `scrape_interval` et `evaluation_interval`
@@ -360,7 +360,7 @@ rate(container_cpu_usage_seconds_total{name!=""}[5m])
 Une valeur de `0.05` signifie que le conteneur consomme 5 % d'un cœur. Multiplier par 100 donne le pourcentage d'utilisation CPU affiché dans le dashboard.
 ---
 
-![Capture8](images/cap8.png)
+![Capture8](images/Cap8.png)
 
 
 
@@ -393,7 +393,7 @@ LIMIT 15;
 ```
 ---
 
-![Capture9](images/cap9.png)
+![Capture9](images/Cap9.png)
 
 
 
